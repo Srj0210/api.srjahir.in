@@ -1,0 +1,4 @@
+flask
+fpdf
+PyPDF2
+werkzeug
