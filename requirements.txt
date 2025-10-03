@@ -1,4 +1,6 @@
 flask
+flask-cors
+pypdf2
 fpdf
-PyPDF2
-gunicorn
+pillow
+python-docx
