@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-from PyPDF2 import PdfMerger, PdfReader
+from PyPDF2 import PdfMerger, PdfReader, PdfWriter
 from fpdf import FPDF
 from docx import Document
 import os
@@ -9,8 +9,9 @@ import uuid
 app = Flask(__name__)
 CORS(app)
 
-UPLOAD_FOLDER = "uploads"
-OUTPUT_FOLDER = "outputs"
+# ✅ Render safe temporary folders
+UPLOAD_FOLDER = "/tmp/uploads"
+OUTPUT_FOLDER = "/tmp/outputs"
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
@@ -18,7 +19,10 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"status": "API is running", "tools": ["word-to-pdf", "merge-pdf", "split-pdf", "text-to-pdf", "pdf-to-word"]})
+    return jsonify({
+        "status": "API is running",
+        "tools": ["word-to-pdf", "text-to-pdf", "merge-pdf", "split-pdf", "pdf-to-word"]
+    })
 
 
 # 🟢 Word → PDF
@@ -28,13 +32,11 @@ def word_to_pdf():
         return jsonify({"error": "No file uploaded"}), 400
 
     file = request.files["file"]
-    filename = str(uuid.uuid4()) + ".docx"
-    filepath = os.path.join(UPLOAD_FOLDER, filename)
+    filepath = os.path.join(UPLOAD_FOLDER, str(uuid.uuid4()) + ".docx")
     file.save(filepath)
 
     document = Document(filepath)
-    pdf_filename = str(uuid.uuid4()) + ".pdf"
-    pdf_path = os.path.join(OUTPUT_FOLDER, pdf_filename)
+    pdf_path = os.path.join(OUTPUT_FOLDER, str(uuid.uuid4()) + ".pdf")
 
     pdf = FPDF()
     pdf.add_page()
@@ -53,8 +55,7 @@ def text_to_pdf():
     if not text:
         return jsonify({"error": "No text provided"}), 400
 
-    pdf_filename = str(uuid.uuid4()) + ".pdf"
-    pdf_path = os.path.join(OUTPUT_FOLDER, pdf_filename)
+    pdf_path = os.path.join(OUTPUT_FOLDER, str(uuid.uuid4()) + ".pdf")
 
     pdf = FPDF()
     pdf.add_page()
@@ -78,8 +79,7 @@ def merge_pdf():
         file.save(filepath)
         merger.append(filepath)
 
-    pdf_filename = str(uuid.uuid4()) + ".pdf"
-    pdf_path = os.path.join(OUTPUT_FOLDER, pdf_filename)
+    pdf_path = os.path.join(OUTPUT_FOLDER, str(uuid.uuid4()) + ".pdf")
     merger.write(pdf_path)
     merger.close()
 
@@ -100,20 +100,19 @@ def split_pdf():
     output_files = []
 
     for i, page in enumerate(reader.pages):
-        pdf_filename = f"{uuid.uuid4()}_{i+1}.pdf"
-        pdf_path = os.path.join(OUTPUT_FOLDER, pdf_filename)
+        pdf_path = os.path.join(OUTPUT_FOLDER, f"{uuid.uuid4()}_{i+1}.pdf")
 
-        writer = PdfMerger()
-        writer.append(filepath, pages=(i, i+1))
-        writer.write(pdf_path)
-        writer.close()
+        writer = PdfWriter()
+        writer.add_page(page)
+        with open(pdf_path, "wb") as f:
+            writer.write(f)
 
         output_files.append(pdf_path)
 
     return jsonify({"message": "PDF Split Successful", "files": output_files})
 
 
-# 🟢 PDF → Word (basic text extraction)
+# 🟢 PDF → Word
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
     if "file" not in request.files:
@@ -130,8 +129,7 @@ def pdf_to_word():
         text = page.extract_text()
         doc.add_paragraph(text if text else "")
 
-    word_filename = str(uuid.uuid4()) + ".docx"
-    word_path = os.path.join(OUTPUT_FOLDER, word_filename)
+    word_path = os.path.join(OUTPUT_FOLDER, str(uuid.uuid4()) + ".docx")
     doc.save(word_path)
 
     return send_file(word_path, as_attachment=True)
