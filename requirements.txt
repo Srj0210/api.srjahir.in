@@ -4,3 +4,4 @@ pypdf2
 fpdf
 pillow
 python-docx
+gunicorn
