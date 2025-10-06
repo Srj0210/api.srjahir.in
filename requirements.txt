@@ -1,8 +1,7 @@
 flask
 flask-cors
-pypdf2
+PyPDF2
 fpdf
 pillow
 python-docx
 gunicorn
-mammoth
