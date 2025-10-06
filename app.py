@@ -1,168 +1,179 @@
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-from PyPDF2 import PdfMerger, PdfReader
+from PyPDF2 import PdfMerger, PdfReader, PdfWriter
 from fpdf import FPDF
 from docx import Document
 import os
 import uuid
-import traceback
 
 app = Flask(__name__)
 CORS(app)
 
-# Use /tmp for Render
-UPLOAD_FOLDER = "/tmp/uploads"
-OUTPUT_FOLDER = "/tmp/outputs"
+UPLOAD_FOLDER = "uploads"
+OUTPUT_FOLDER = "outputs"
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
-        "status": "API is running (DEBUG MODE)",
+        "status": "API is running ✅",
         "tools": ["word-to-pdf", "merge-pdf", "split-pdf", "text-to-pdf", "pdf-to-word"]
     })
-
-
-# Error handler to log full traceback
-@app.errorhandler(Exception)
-def handle_exception(e):
-    error_message = "".join(traceback.format_exception(type(e), e, e.__traceback__))
-    print("🔥 ERROR TRACEBACK 🔥\n", error_message)
-    return jsonify({"error": str(e), "traceback": error_message}), 500
 
 
 # 🟢 Word → PDF
 @app.route("/word-to-pdf", methods=["POST"])
 def word_to_pdf():
-    print("📥 Word to PDF request received")
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "No file uploaded"}), 400
 
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
+        file = request.files["file"]
+        filename = str(uuid.uuid4()) + ".docx"
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
+        print(f"✅ File saved: {filepath}")
 
-    file = request.files["file"]
-    filename = str(uuid.uuid4()) + ".docx"
-    filepath = os.path.join(UPLOAD_FOLDER, filename)
-    file.save(filepath)
-    print(f"✅ File saved: {filepath}")
+        document = Document(filepath)
+        pdf_filename = str(uuid.uuid4()) + ".pdf"
+        pdf_path = os.path.join(OUTPUT_FOLDER, pdf_filename)
 
-    document = Document(filepath)
-    pdf_filename = str(uuid.uuid4()) + ".pdf"
-    pdf_path = os.path.join(OUTPUT_FOLDER, pdf_filename)
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
 
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    for para in document.paragraphs:
-        pdf.multi_cell(0, 10, para.text)
-    pdf.output(pdf_path)
-    print(f"✅ PDF generated: {pdf_path}")
+        for para in document.paragraphs:
+            # Prevent crash for emojis or Gujarati/Hindi
+            text = para.text.encode('latin-1', 'replace').decode('latin-1')
+            pdf.multi_cell(0, 10, text)
 
-    return send_file(pdf_path, as_attachment=True)
+        pdf.output(pdf_path)
+        print(f"✅ Word converted to PDF: {pdf_path}")
+
+        return send_file(pdf_path, as_attachment=True)
+
+    except Exception as e:
+        print("❌ ERROR in word_to_pdf:", str(e))
+        return jsonify({"error": str(e)}), 500
 
 
 # 🟢 Text → PDF
 @app.route("/text-to-pdf", methods=["POST"])
 def text_to_pdf():
-    print("📥 Text to PDF request received")
-    text = request.form.get("text", "")
-    if not text:
-        return jsonify({"error": "No text provided"}), 400
+    try:
+        text = request.form.get("text", "")
+        if not text:
+            return jsonify({"error": "No text provided"}), 400
 
-    pdf_filename = str(uuid.uuid4()) + ".pdf"
-    pdf_path = os.path.join(OUTPUT_FOLDER, pdf_filename)
+        pdf_filename = str(uuid.uuid4()) + ".pdf"
+        pdf_path = os.path.join(OUTPUT_FOLDER, pdf_filename)
 
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.multi_cell(0, 10, text)
-    pdf.output(pdf_path)
-    print(f"✅ Text PDF generated: {pdf_path}")
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
+        safe_text = text.encode('latin-1', 'replace').decode('latin-1')
+        pdf.multi_cell(0, 10, safe_text)
+        pdf.output(pdf_path)
 
-    return send_file(pdf_path, as_attachment=True)
+        print("✅ Text converted to PDF")
+        return send_file(pdf_path, as_attachment=True)
+
+    except Exception as e:
+        print("❌ ERROR in text_to_pdf:", str(e))
+        return jsonify({"error": str(e)}), 500
 
 
 # 🟢 Merge PDF
 @app.route("/merge-pdf", methods=["POST"])
 def merge_pdf():
-    print("📥 Merge PDF request received")
-    files = request.files.getlist("files")
-    if not files:
-        return jsonify({"error": "No files uploaded"}), 400
+    try:
+        files = request.files.getlist("files")
+        if not files:
+            return jsonify({"error": "No files uploaded"}), 400
 
-    merger = PdfMerger()
-    for file in files:
-        filepath = os.path.join(UPLOAD_FOLDER, str(uuid.uuid4()) + ".pdf")
-        file.save(filepath)
-        merger.append(filepath)
-        print(f"✅ Added to merger: {filepath}")
+        merger = PdfMerger()
+        for file in files:
+            filepath = os.path.join(UPLOAD_FOLDER, str(uuid.uuid4()) + ".pdf")
+            file.save(filepath)
+            merger.append(filepath)
 
-    pdf_filename = str(uuid.uuid4()) + ".pdf"
-    pdf_path = os.path.join(OUTPUT_FOLDER, pdf_filename)
-    merger.write(pdf_path)
-    merger.close()
-    print(f"✅ Merged PDF saved: {pdf_path}")
+        pdf_filename = str(uuid.uuid4()) + ".pdf"
+        pdf_path = os.path.join(OUTPUT_FOLDER, pdf_filename)
+        merger.write(pdf_path)
+        merger.close()
 
-    return send_file(pdf_path, as_attachment=True)
+        print("✅ PDFs merged successfully")
+        return send_file(pdf_path, as_attachment=True)
+
+    except Exception as e:
+        print("❌ ERROR in merge_pdf:", str(e))
+        return jsonify({"error": str(e)}), 500
 
 
 # 🟢 Split PDF
 @app.route("/split-pdf", methods=["POST"])
 def split_pdf():
-    print("📥 Split PDF request received")
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "No file uploaded"}), 400
 
-    file = request.files["file"]
-    filepath = os.path.join(UPLOAD_FOLDER, str(uuid.uuid4()) + ".pdf")
-    file.save(filepath)
-    print(f"✅ File saved for splitting: {filepath}")
+        file = request.files["file"]
+        filepath = os.path.join(UPLOAD_FOLDER, str(uuid.uuid4()) + ".pdf")
+        file.save(filepath)
 
-    reader = PdfReader(filepath)
-    output_files = []
+        reader = PdfReader(filepath)
+        output_files = []
 
-    for i, page in enumerate(reader.pages):
-        pdf_filename = f"{uuid.uuid4()}_{i+1}.pdf"
-        pdf_path = os.path.join(OUTPUT_FOLDER, pdf_filename)
+        for i, page in enumerate(reader.pages):
+            pdf_writer = PdfWriter()
+            pdf_writer.add_page(page)
 
-        merger = PdfMerger()
-        merger.append(filepath, pages=(i, i+1))
-        merger.write(pdf_path)
-        merger.close()
+            pdf_filename = f"{uuid.uuid4()}_{i+1}.pdf"
+            pdf_path = os.path.join(OUTPUT_FOLDER, pdf_filename)
 
-        output_files.append(pdf_path)
-        print(f"✅ Page {i+1} saved: {pdf_path}")
+            with open(pdf_path, "wb") as f:
+                pdf_writer.write(f)
 
-    return jsonify({"message": "PDF Split Successful", "files": output_files})
+            output_files.append(pdf_filename)
+
+        print("✅ PDF split successful")
+        return jsonify({"message": "PDF Split Successful", "files": output_files})
+
+    except Exception as e:
+        print("❌ ERROR in split_pdf:", str(e))
+        return jsonify({"error": str(e)}), 500
 
 
 # 🟢 PDF → Word
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
-    print("📥 PDF to Word request received")
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "No file uploaded"}), 400
 
-    file = request.files["file"]
-    filepath = os.path.join(UPLOAD_FOLDER, str(uuid.uuid4()) + ".pdf")
-    file.save(filepath)
-    print(f"✅ PDF file saved: {filepath}")
+        file = request.files["file"]
+        filepath = os.path.join(UPLOAD_FOLDER, str(uuid.uuid4()) + ".pdf")
+        file.save(filepath)
 
-    reader = PdfReader(filepath)
-    doc = Document()
+        reader = PdfReader(filepath)
+        doc = Document()
 
-    for page in reader.pages:
-        text = page.extract_text()
-        doc.add_paragraph(text if text else "")
+        for page in reader.pages:
+            text = page.extract_text() or ""
+            doc.add_paragraph(text)
 
-    word_filename = str(uuid.uuid4()) + ".docx"
-    word_path = os.path.join(OUTPUT_FOLDER, word_filename)
-    doc.save(word_path)
-    print(f"✅ Word file generated: {word_path}")
+        word_filename = str(uuid.uuid4()) + ".docx"
+        word_path = os.path.join(OUTPUT_FOLDER, word_filename)
+        doc.save(word_path)
 
-    return send_file(word_path, as_attachment=True)
+        print("✅ PDF converted to Word")
+        return send_file(word_path, as_attachment=True)
+
+    except Exception as e:
+        print("❌ ERROR in pdf_to_word:", str(e))
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
