@@ -1,6 +1,6 @@
 Flask
+gunicorn
 python-docx
-fpdf2
-PyPDF2
 PyMuPDF
-werkzeug
+reportlab
+Werkzeug
