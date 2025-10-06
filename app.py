@@ -1,144 +1,195 @@
-import os, uuid, io, time, subprocess, threading
-from zipfile import ZipFile
-from flask import Flask, request, jsonify, send_file
-from flask_cors import CORS
+import os
+import uuid
+from flask import Flask, request, send_file, jsonify, after_this_request
 from werkzeug.utils import secure_filename
-from PyPDF2 import PdfReader, PdfWriter, PdfMerger
+from PyPDF2 import PdfMerger
 from fpdf import FPDF
 from docx import Document
 
+app = Flask(__name__)
+
 UPLOAD_FOLDER = "uploads"
 OUTPUT_FOLDER = "outputs"
-for f in [UPLOAD_FOLDER, OUTPUT_FOLDER]:
-    os.makedirs(f, exist_ok=True)
+FONTS_FOLDER = "fonts"
+ALLOWED_EXTENSIONS = {"pdf", "docx", "doc", "txt"}
 
-app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+os.makedirs(FONTS_FOLDER, exist_ok=True)
 
-# ---------------- Auto cleanup (every 6h) ----------------
-def cleanup_old_files(hours=6):
-    cutoff = time.time() - hours * 3600
-    for folder in [UPLOAD_FOLDER, OUTPUT_FOLDER]:
-        for f in os.listdir(folder):
-            p = os.path.join(folder, f)
-            if os.path.isfile(p) and os.path.getmtime(p) < cutoff:
-                try: os.remove(p)
-                except: pass
-    threading.Timer(hours * 3600, cleanup_old_files).start()
-cleanup_old_files()
 
-# ---------------- Helpers ----------------
-def save_upload_file(fs):
-    fn = secure_filename(fs.filename)
-    path = os.path.join(UPLOAD_FOLDER, f"{uuid.uuid4().hex}_{fn}")
-    fs.save(path)
-    return path, fn
+# ============= Helper Functions =============
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def send_and_cleanup(path, name, mime):
-    buf = io.BytesIO()
-    with open(path, "rb") as f: buf.write(f.read())
-    buf.seek(0)
-    try: os.remove(path)
-    except: pass
-    return send_file(buf, as_attachment=True, download_name=name, mimetype=mime)
+def save_upload_file(file):
+    filename = secure_filename(file.filename)
+    file_path = os.path.join(UPLOAD_FOLDER, f"{uuid.uuid4().hex}_{filename}")
+    file.save(file_path)
+    return file_path, filename
 
-# ---------------- Routes ----------------
-@app.route("/")
-def home():
-    return jsonify({"status":"API running","tools":["word-to-pdf","pdf-to-word","merge-pdf","split-pdf","text-to-pdf"]})
+def send_and_cleanup(output_path, filename, mimetype):
+    @after_this_request
+    def cleanup(response):
+        try:
+            if os.path.exists(output_path):
+                os.remove(output_path)
+        except Exception as e:
+            print(f"Cleanup error: {e}")
+        return response
 
-# Word → PDF  (pixel-perfect)
+    return send_file(output_path, as_attachment=True, download_name=filename, mimetype=mimetype)
+
+# ============= 1️⃣ Word → PDF =============
 @app.route("/word-to-pdf", methods=["POST"])
 def word_to_pdf():
     if "file" not in request.files:
-        return jsonify({"error":"No file uploaded"}),400
-    f = request.files["file"]
-    if not f.filename.lower().endswith(".docx"):
-        return jsonify({"error":"Only .docx supported"}),400
+        return jsonify({"error": "No file uploaded"}), 400
+    file = request.files["file"]
+    if not file.filename or not allowed_file(file.filename):
+        return jsonify({"error": "Invalid file"}), 400
 
-    in_path, orig = save_upload_file(f)
-    out_name = os.path.splitext(orig)[0]+".pdf"
+    uploaded_path, original_name = save_upload_file(file)
+    base_name = os.path.splitext(original_name)[0]
+    out_pdf_name = f"{base_name}.pdf"
+    out_pdf_path = os.path.join(OUTPUT_FOLDER, f"{uuid.uuid4().hex}_{out_pdf_name}")
+
     try:
-        subprocess.run(["libreoffice","--headless","--convert-to","pdf","--outdir",OUTPUT_FOLDER,in_path],check=True)
-    except subprocess.CalledProcessError as e:
-        return jsonify({"error":"Conversion failed","detail":str(e)}),500
+        doc = Document(uploaded_path)
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+
+        font_path = os.path.join(FONTS_FOLDER, "DejaVuSans.ttf")
+        if os.path.exists(font_path):
+            pdf.add_font("DejaVu", "", font_path, uni=True)
+            pdf.set_font("DejaVu", size=12)
+        else:
+            pdf.set_font("Arial", size=12)
+
+        for para in doc.paragraphs:
+            text = para.text.strip()
+            if not text:
+                pdf.ln(5)
+                continue
+
+            style = para.style.name.lower()
+            if "heading" in style:
+                pdf.set_font("Arial", "B", 14)
+            elif any(run.bold for run in para.runs):
+                pdf.set_font("Arial", "B", 12)
+            else:
+                pdf.set_font("Arial", "", 12)
+
+            pdf.multi_cell(0, 8, text)
+            pdf.ln(2)
+
+        pdf.output(out_pdf_path)
+
+    except Exception as e:
+        return jsonify({"error": f"Conversion failed: {str(e)}"}), 500
     finally:
-        try: os.remove(in_path)
-        except: pass
+        os.remove(uploaded_path)
 
-    out_path = os.path.join(OUTPUT_FOLDER,out_name)
-    return send_and_cleanup(out_path,out_name,"application/pdf")
+    return send_and_cleanup(out_pdf_path, out_pdf_name, "application/pdf")
 
-# Text → PDF
+
+# ============= 2️⃣ PDF → Word =============
+@app.route("/pdf-to-word", methods=["POST"])
+def pdf_to_word():
+    import fitz  # PyMuPDF
+
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    file = request.files["file"]
+    if not file.filename or not allowed_file(file.filename):
+        return jsonify({"error": "Invalid file"}), 400
+
+    uploaded_path, original_name = save_upload_file(file)
+    base_name = os.path.splitext(original_name)[0]
+    out_docx_name = f"{base_name}.docx"
+    out_docx_path = os.path.join(OUTPUT_FOLDER, f"{uuid.uuid4().hex}_{out_docx_name}")
+
+    try:
+        doc = Document()
+        pdf = fitz.open(uploaded_path)
+        for page in pdf:
+            text = page.get_text("text")
+            doc.add_paragraph(text)
+            doc.add_page_break()
+        doc.save(out_docx_path)
+
+    except Exception as e:
+        return jsonify({"error": f"Conversion failed: {str(e)}"}), 500
+    finally:
+        os.remove(uploaded_path)
+
+    return send_and_cleanup(out_docx_path, out_docx_name,
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+
+# ============= 3️⃣ Merge PDFs =============
+@app.route("/merge-pdf", methods=["POST"])
+def merge_pdf():
+    if "files" not in request.files:
+        return jsonify({"error": "No files uploaded"}), 400
+    files = request.files.getlist("files")
+    if not files:
+        return jsonify({"error": "No PDFs provided"}), 400
+
+    merger = PdfMerger()
+    temp_files = []
+
+    out_pdf_name = "merged.pdf"
+    out_pdf_path = os.path.join(OUTPUT_FOLDER, f"{uuid.uuid4().hex}_{out_pdf_name}")
+
+    try:
+        for file in files:
+            if file.filename and allowed_file(file.filename):
+                temp_path, _ = save_upload_file(file)
+                temp_files.append(temp_path)
+                merger.append(temp_path)
+        merger.write(out_pdf_path)
+        merger.close()
+
+    except Exception as e:
+        return jsonify({"error": f"Merge failed: {str(e)}"}), 500
+    finally:
+        for f in temp_files:
+            os.remove(f)
+
+    return send_and_cleanup(out_pdf_path, out_pdf_name, "application/pdf")
+
+
+# ============= 4️⃣ Text → PDF =============
 @app.route("/text-to-pdf", methods=["POST"])
 def text_to_pdf():
-    text = request.form.get("text","")
-    if not text.strip():
-        return jsonify({"error":"No text"}),400
-    out_name=f"text_{uuid.uuid4().hex}.pdf"
-    out_path=os.path.join(OUTPUT_FOLDER,out_name)
-    pdf=FPDF();pdf.add_page();pdf.set_font("Arial",size=12);pdf.multi_cell(0,6,text);pdf.output(out_path)
-    return send_and_cleanup(out_path,out_name,"application/pdf")
+    text = request.form.get("text", "").strip()
+    if not text:
+        return jsonify({"error": "No text provided"}), 400
 
-# Merge PDF
-@app.route("/merge-pdf",methods=["POST"])
-def merge_pdf():
-    files=request.files.getlist("files")
-    if not files: return jsonify({"error":"No files"}),400
-    merger=PdfMerger();paths=[]
-    for f in files:
-        p,_=save_upload_file(f);paths.append(p);merger.append(p)
-    out_name=f"merged_{uuid.uuid4().hex}.pdf"
-    out_path=os.path.join(OUTPUT_FOLDER,out_name)
-    merger.write(out_path);merger.close()
-    for p in paths:
-        try: os.remove(p)
-        except: pass
-    return send_and_cleanup(out_path,out_name,"application/pdf")
+    out_pdf_name = f"text_{uuid.uuid4().hex[:6]}.pdf"
+    out_pdf_path = os.path.join(OUTPUT_FOLDER, out_pdf_name)
 
-# Split PDF
-@app.route("/split-pdf",methods=["POST"])
-def split_pdf():
-    if "file" not in request.files: return jsonify({"error":"No file"}),400
-    f=request.files["file"]
-    path,_=save_upload_file(f)
-    reader=PdfReader(path)
-    zip_path=os.path.join(OUTPUT_FOLDER,f"{uuid.uuid4().hex}.zip")
-    with ZipFile(zip_path,"w") as z:
-        for i,p in enumerate(reader.pages,1):
-            w=PdfWriter();w.add_page(p)
-            single=os.path.join(OUTPUT_FOLDER,f"page_{i}.pdf")
-            with open(single,"wb") as out: w.write(out)
-            z.write(single,f"page_{i}.pdf");os.remove(single)
-    os.remove(path)
-    return send_and_cleanup(zip_path,"split_pages.zip","application/zip")
-
-# PDF → Word
-@app.route("/pdf-to-word",methods=["POST"])
-def pdf_to_word():
-    if "file" not in request.files: return jsonify({"error":"No file"}),400
-    f=request.files["file"]
-    path,orig=save_upload_file(f)
     try:
-        r=PdfReader(path);d=Document()
-        for p in r.pages:
-            t=p.extract_text() or "";d.add_paragraph(t)
-        out=os.path.join(OUTPUT_FOLDER,f"{uuid.uuid4().hex}.docx")
-        d.save(out)
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.set_font("Arial", size=12)
+        pdf.multi_cell(0, 10, text)
+        pdf.output(out_pdf_path)
+
     except Exception as e:
-        return jsonify({"error":"PDF→Word failed","detail":str(e)}),500
-    finally: os.remove(path)
-    return send_and_cleanup(out,"converted.docx","application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        return jsonify({"error": f"Conversion failed: {str(e)}"}), 500
 
-# Optional cleanup endpoint (for JS)
-@app.route("/cleanup",methods=["POST"])
-def cleanup_endpoint():
-    data=request.get_json(force=True)
-    p=data.get("path")
-    if p and os.path.exists(p):
-        try: os.remove(p);return jsonify({"status":"deleted"})
-        except Exception as e: return jsonify({"error":str(e)}),500
-    return jsonify({"status":"not_found"})
+    return send_and_cleanup(out_pdf_path, out_pdf_name, "application/pdf")
 
-if __name__=="__main__":
-    app.run(host="0.0.0.0",port=int(os.environ.get("PORT",5000)),debug=False)
+
+# ============= Home Route =============
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({"status": "SRJahir Tools API is running ✅"})
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
