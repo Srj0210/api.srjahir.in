@@ -3,4 +3,5 @@ gunicorn
 python-docx
 PyMuPDF
 reportlab
-Werkzeug
+pypdf2
+werkzeug
