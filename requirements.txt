@@ -4,4 +4,5 @@ python-docx
 PyMuPDF
 reportlab
 pypdf2
+fpdf2
 werkzeug
