@@ -1,16 +1,23 @@
-# ---- SRJahir Tools : Render Docker build ----
-FROM python:3.11-slim
+# Use Ubuntu base so we can install LibreOffice
+FROM ubuntu:22.04
 
-# Install LibreOffice + fonts
-RUN apt-get update && apt-get install -y libreoffice && apt-get clean
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y python3 python3-pip libreoffice && \
+    apt-get clean
 
-# Create working directories
+# Set working directory
 WORKDIR /app
+
+# Copy project files
 COPY . /app
 
-# Install Python deps
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose port (Render reads $PORT automatically)
-EXPOSE 5000
-CMD ["python", "app.py"]
+# Expose Render port
+ENV PORT=10000
+EXPOSE 10000
+
+# Run app using gunicorn
+CMD gunicorn app:app --bind 0.0.0.0:$PORT
