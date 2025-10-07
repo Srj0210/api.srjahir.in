@@ -5,4 +5,5 @@ PyMuPDF
 reportlab
 pypdf2
 fpdf2
+flask-cors
 werkzeug
