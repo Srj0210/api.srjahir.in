@@ -158,35 +158,39 @@ def pdf_to_word():
             return jsonify({"error": "No file uploaded"}), 400
 
         input_path = os.path.join("uploads", file.filename)
-        output_name = os.path.splitext(file.filename)[0] + ".docx"
-        output_path = os.path.join("outputs", output_name)
-
-        os.makedirs("uploads", exist_ok=True)
-        os.makedirs("outputs", exist_ok=True)
+        output_dir = "outputs"
+        os.makedirs(output_dir, exist_ok=True)
         file.save(input_path)
 
-        # ✅ Convert using LibreOffice CLI (headless mode)
+        # ✅ Find correct LibreOffice binary
+        soffice_path = "/usr/bin/soffice"
+        if not os.path.exists(soffice_path):
+            soffice_path = "/usr/bin/libreoffice"
+
+        # ✅ Convert using CLI
         cmd = [
-            "soffice",
+            soffice_path,
             "--headless",
-            "--convert-to", "docx",
-            "--outdir", "outputs",
+            "--convert-to", "docx:MS Word 2007 XML",
+            "--outdir", output_dir,
             input_path
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
 
         if result.returncode != 0:
-            print("Conversion Error:", result.stderr)
+            print("LibreOffice error:", result.stderr)
             return jsonify({"error": "Conversion failed"}), 500
 
-        # ✅ Send converted file to user
-        response = send_file(
-            output_path,
-            as_attachment=True,
-            download_name=output_name
-        )
+        output_name = os.path.splitext(file.filename)[0] + ".docx"
+        output_path = os.path.join(output_dir, output_name)
 
-        # ✅ Cleanup input/output after send
+        if not os.path.exists(output_path):
+            print("Output not found:", result.stderr)
+            return jsonify({"error": "Output file missing"}), 500
+
+        response = send_file(output_path, as_attachment=True, download_name=output_name)
+
+        # ✅ Delete files after send (non-blocking)
         threading.Thread(target=cleanup_files, args=([input_path, output_path], 5)).start()
 
         return response
