@@ -1,32 +1,36 @@
 # ✅ Base Image
 FROM python:3.11-slim
 
-# ✅ Prevent interactive prompts
+# ✅ Environment setup
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
-# ✅ Install LibreOffice (full writer filters) + fonts
+# ✅ Install LibreOffice FULL suite (with all writer filters)
 RUN apt-get update && apt-get install -y \
+    software-properties-common \
     libreoffice \
     libreoffice-writer \
     libreoffice-draw \
-    libreoffice-calc \
     libreoffice-impress \
+    libreoffice-calc \
     libreoffice-core \
     libreoffice-common \
+    libreoffice-java-common \
+    python3-uno \
     fonts-dejavu-core \
     fonts-noto-core \
     fonts-noto-ui-core \
     fonts-noto-mono \
     fonts-noto-color-emoji \
-    locales \
- && apt-get clean && rm -rf /var/lib/apt/lists/*
+    default-jre \
+    locales && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ✅ Generate UTF-8 locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
 
-# ✅ Working directory
+# ✅ Set working directory
 WORKDIR /app
 
 # ✅ Copy project files
