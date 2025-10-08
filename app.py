@@ -1,5 +1,7 @@
 import os
+import re
 import subprocess
+import threading
 from flask import Flask, request, send_file, jsonify, after_this_request
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
@@ -16,6 +18,7 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 
 def safe_remove(path):
+    """Safely remove file if exists"""
     try:
         if path and os.path.exists(path):
             os.remove(path)
@@ -23,80 +26,65 @@ def safe_remove(path):
         print(f"⚠️ Failed to delete {path}: {e}")
 
 
+def cleanup_files(paths, delay=5):
+    """Delete multiple files after small delay"""
+    import time
+    time.sleep(delay)
+    for p in paths:
+        safe_remove(p)
+
+
 def parse_pages_spec(spec: str, total_pages: int):
-    """
-    Parse user-supplied pages spec (supports commas, ranges, or compact digits).
-    Returns sorted unique list of 1-based page numbers within [1, total_pages].
-    Examples:
-      "1,3,5-7" -> [1,3,5,6,7]
-      "5689" -> [5,6,8,9]
-      "2-4,7" -> [2,3,4,7]
-    """
+    """Parse user-supplied pages spec like 1,3,5-7 or 5689"""
     if not spec:
         return []
-
     spec = spec.strip()
     pages = set()
 
-    # If spec contains commas or hyphen, standard parse
     if "," in spec or "-" in spec:
         parts = [p.strip() for p in spec.split(",") if p.strip()]
         for part in parts:
             if "-" in part:
                 try:
                     a, b = part.split("-", 1)
-                    a = int(a.strip())
-                    b = int(b.strip())
+                    a, b = int(a), int(b)
                     if a > b:
                         a, b = b, a
                     for n in range(a, b + 1):
                         pages.add(n)
-                except Exception:
+                except:
                     continue
             else:
                 try:
-                    n = int(part)
-                    pages.add(n)
-                except Exception:
-                    # ignore invalid
+                    pages.add(int(part))
+                except:
                     continue
     else:
-        # If no commas/hyphens, treat as compact digits sequence or single number
-        # e.g., "5689" -> [5,6,8,9]; "10" -> [10]
         if spec.isdigit():
-            # if multi-digit like "10" should be 10 not [1,0]
-            # Heuristic: if spec length <= 3 and each char is single-digit pages, parse as digits
-            if len(spec) <= 4:  # small heuristic
-                # If parsed as full number <= total_pages and length>1, treat as number
+            if len(spec) <= 4:
                 try:
                     full = int(spec)
                     if 1 <= full <= total_pages:
                         pages.add(full)
                     else:
-                        # parse each digit as page
                         for ch in spec:
                             pages.add(int(ch))
-                except Exception:
+                except:
                     for ch in spec:
                         pages.add(int(ch))
             else:
-                # fallback: parse as digits
                 for ch in spec:
                     pages.add(int(ch))
         else:
-            # try to parse numbers inside string
-            import re
             found = re.findall(r"\d+", spec)
             for f in found:
                 pages.add(int(f))
 
-    # keep valid range
-    result = sorted([p for p in pages if 1 <= p <= total_pages])
-    return result
+    return sorted([p for p in pages if 1 <= p <= total_pages])
 
 
 # ---------------------------
-# Word -> PDF (LibreOffice)
+# Word → PDF (LibreOffice)
 # ---------------------------
 @app.route("/word-to-pdf", methods=["POST"])
 def word_to_pdf():
@@ -110,32 +98,25 @@ def word_to_pdf():
         file.save(input_path)
 
         original_name = os.path.splitext(filename)[0]
-        output_filename = f"{original_name}.pdf"
+        safe_name = re.sub(r'[^\w\s.-]', '', original_name)
+        output_filename = f"{safe_name}.pdf"
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
 
-        # convert via LibreOffice
         subprocess.run([
             "libreoffice", "--headless", "--convert-to", "pdf",
             "--outdir", OUTPUT_FOLDER, input_path
         ], check=True)
 
-        # LibreOffice typically creates <inputbase>.pdf; ensure rename if necessary
         converted = os.path.join(OUTPUT_FOLDER, os.path.splitext(filename)[0] + ".pdf")
         if os.path.exists(converted) and converted != output_path:
-            try:
-                os.replace(converted, output_path)
-            except Exception:
-                pass
+            os.replace(converted, output_path)
 
         @after_this_request
         def cleanup(response):
-            # delete input and output after response delivered
             safe_remove(input_path)
-            # don't remove output until after response has been returned to client by send_file
             return response
 
         resp = send_file(output_path, as_attachment=True, download_name=output_filename)
-        # schedule output removal after response has been created
         safe_remove(output_path)
         return resp
 
@@ -148,7 +129,7 @@ def word_to_pdf():
 
 
 # ---------------------------
-# PDF -> Word (Unoconv + LibreOffice)
+# PDF → Word (LibreOffice)
 # ---------------------------
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
@@ -157,17 +138,21 @@ def pdf_to_word():
         if not file:
             return jsonify({"error": "No file uploaded"}), 400
 
-        input_path = os.path.join("uploads", file.filename)
-        output_dir = "outputs"
+        filename = secure_filename(file.filename)
+        input_path = os.path.join(UPLOAD_FOLDER, filename)
+        output_dir = OUTPUT_FOLDER
         os.makedirs(output_dir, exist_ok=True)
         file.save(input_path)
 
-        # ✅ Find correct LibreOffice binary
+        base_name = os.path.splitext(filename)[0]
+        safe_name = re.sub(r'[^\w\s.-]', '', base_name)  # remove emojis / symbols
+        output_name = f"{safe_name}.docx"
+        output_path = os.path.join(output_dir, output_name)
+
         soffice_path = "/usr/bin/soffice"
         if not os.path.exists(soffice_path):
             soffice_path = "/usr/bin/libreoffice"
 
-        # ✅ Convert using CLI
         cmd = [
             soffice_path,
             "--headless",
@@ -181,18 +166,12 @@ def pdf_to_word():
             print("LibreOffice error:", result.stderr)
             return jsonify({"error": "Conversion failed"}), 500
 
-        output_name = os.path.splitext(file.filename)[0] + ".docx"
-        output_path = os.path.join(output_dir, output_name)
-
         if not os.path.exists(output_path):
             print("Output not found:", result.stderr)
             return jsonify({"error": "Output file missing"}), 500
 
         response = send_file(output_path, as_attachment=True, download_name=output_name)
-
-        # ✅ Delete files after send (non-blocking)
         threading.Thread(target=cleanup_files, args=([input_path, output_path], 5)).start()
-
         return response
 
     except Exception as e:
@@ -201,10 +180,8 @@ def pdf_to_word():
 
 
 # ---------------------------
-# Merge PDF (lossless)
+# Merge PDFs
 # ---------------------------
-from PyPDF2 import PdfMerger
-
 @app.route("/merge-pdf", methods=["POST"])
 def merge_pdf():
     try:
@@ -214,28 +191,33 @@ def merge_pdf():
 
         merger = PdfMerger()
         for file in files:
-            path = os.path.join("uploads", file.filename)
+            path = os.path.join(UPLOAD_FOLDER, secure_filename(file.filename))
             file.save(path)
             merger.append(path)
 
-        output_name = "merged_" + files[0].filename.replace(".pdf", "") + ".pdf"
-        output_path = os.path.join("outputs", output_name)
+        output_name = "merged_" + secure_filename(files[0].filename.replace(".pdf", "")) + ".pdf"
+        output_path = os.path.join(OUTPUT_FOLDER, output_name)
         merger.write(output_path)
         merger.close()
 
-        return send_file(output_path, as_attachment=True, download_name=output_name)
+        resp = send_file(output_path, as_attachment=True, download_name=output_name)
+        safe_remove(output_path)
+        for file in files:
+            safe_remove(os.path.join(UPLOAD_FOLDER, secure_filename(file.filename)))
+        return resp
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 # ---------------------------
-# Split PDF (custom pages selection)
+# Split PDF (custom pages)
 # ---------------------------
 @app.route("/split-pdf", methods=["POST"])
 def split_pdf():
     try:
         file = request.files.get("file")
-        pages_spec = request.form.get("pages", "").strip()  # user input string
+        pages_spec = request.form.get("pages", "").strip()
         if not file:
             return jsonify({"error": "No file uploaded"}), 400
 
@@ -246,7 +228,6 @@ def split_pdf():
         reader = PdfReader(input_path)
         total_pages = len(reader.pages)
 
-        # If pages_spec empty, default to all pages
         if not pages_spec:
             selected = list(range(1, total_pages + 1))
         else:
@@ -258,14 +239,12 @@ def split_pdf():
 
         writer = PdfWriter()
         for p in selected:
-            # pages are 1-indexed for users
             idx = p - 1
             if 0 <= idx < total_pages:
                 writer.add_page(reader.pages[idx])
 
         output_filename = f"split_{'_'.join(str(x) for x in selected)}.pdf"
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
-
         with open(output_path, "wb") as f_out:
             writer.write(f_out)
 
@@ -284,7 +263,7 @@ def split_pdf():
 
 
 # ---------------------------
-# Text -> PDF
+# Text → PDF
 # ---------------------------
 @app.route("/text-to-pdf", methods=["POST"])
 def text_to_pdf():
@@ -316,7 +295,9 @@ def text_to_pdf():
         return jsonify({"error": str(e)}), 500
 
 
+# ---------------------------
 # Root
+# ---------------------------
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({"status": "SRJahir Tools API", "ready": True})
