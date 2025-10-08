@@ -1,51 +1,40 @@
-# ✅ Base Image (Python + Debian-based for full locale/font support)
+# ✅ Base Image
 FROM python:3.11-slim
 
-# Prevent timezone & locale prompts
+# ✅ Avoid interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
+ENV DOCKER_BUILDKIT=0
 
-# ✅ Install LibreOffice + All filters + Indic (Indian) fonts
+# ✅ Install LibreOffice + Indian Fonts (lightweight, stable)
 RUN apt-get update && apt-get install -y \
     libreoffice \
     libreoffice-writer \
     libreoffice-draw \
     libreoffice-calc \
     libreoffice-impress \
-    libreoffice-base-core \
     fonts-dejavu-core \
-    fonts-freefont-ttf \
     fonts-noto-core \
-    fonts-noto-cjk \
     fonts-noto-color-emoji \
+    fonts-noto-cjk \
+    fonts-noto-sans \
+    fonts-noto-mono \
     fonts-noto-extra \
     fonts-noto-ui-core \
-    fonts-noto-mono \
-    fonts-noto-unhinted \
-    fonts-lohit-deva \
-    fonts-lohit-gujr \
-    fonts-lohit-beng \
-    fonts-lohit-guru \
-    fonts-lohit-knda \
-    fonts-lohit-mlym \
-    fonts-lohit-orya \
-    fonts-lohit-taml \
-    fonts-lohit-telu \
-    fonts-noto-sans \
-    fonts-noto-sans-gujarati \
     fonts-noto-sans-devanagari \
+    fonts-noto-sans-gujarati \
     fonts-noto-sans-bengali \
-    fonts-noto-sans-malayalam \
     fonts-noto-sans-tamil \
     fonts-noto-sans-telugu \
+    fonts-noto-sans-malayalam \
     locales \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# ✅ Generate UTF-8 locale (for Indian languages)
+# ✅ Generate locale (important for Indic text)
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
 
-# ✅ Set working directory
+# ✅ Working directory
 WORKDIR /app
 
 # ✅ Copy app files
@@ -56,9 +45,7 @@ RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 # ✅ Expose Render port
 EXPOSE 10000
-
-# ✅ Set Render environment variable
 ENV PORT=10000
 
-# ✅ Start Gunicorn server
+# ✅ Start app using Gunicorn
 CMD exec gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 180
