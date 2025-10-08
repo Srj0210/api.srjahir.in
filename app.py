@@ -17,7 +17,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 
-# ✅ Auto-delete function
+# ✅ Auto-delete helper
 def safe_remove(path):
     try:
         if os.path.exists(path):
@@ -48,10 +48,18 @@ def word_to_pdf():
             "--outdir", OUTPUT_FOLDER, input_path
         ], check=True)
 
-        # Auto-delete input
+        # LibreOffice output path (actual file)
+        converted_name = os.path.splitext(filename)[0] + ".pdf"
+        converted_path = os.path.join(OUTPUT_FOLDER, converted_name)
+
+        # Rename file (in case LibreOffice named differently)
+        if converted_path != output_path and os.path.exists(converted_path):
+            os.rename(converted_path, output_path)
+
+        # Delete input file
         safe_remove(input_path)
 
-        # Return PDF and auto-delete output after send
+        # Return + delete output after sending
         response = send_file(output_path, as_attachment=True, download_name=output_filename)
         safe_remove(output_path)
         return response
@@ -84,7 +92,10 @@ def pdf_to_word():
             doc.add_paragraph(text)
         doc.save(output_path)
 
+        # Delete input after conversion
         safe_remove(input_path)
+
+        # Send + delete output
         response = send_file(output_path, as_attachment=True, download_name=output_name)
         safe_remove(output_path)
         return response
@@ -115,10 +126,11 @@ def merge_pdf():
         merger.write(output_path)
         merger.close()
 
-        # Delete temporary input files
+        # Delete all input files
         for f in temp_files:
             safe_remove(f)
 
+        # Send + delete output
         response = send_file(output_path, as_attachment=True, download_name="merged.pdf")
         safe_remove(output_path)
         return response
@@ -136,6 +148,7 @@ def text_to_pdf():
             return jsonify({"error": "No text provided"}), 400
 
         output_path = os.path.join(OUTPUT_FOLDER, "output.pdf")
+
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Helvetica", size=12)
@@ -151,7 +164,7 @@ def text_to_pdf():
         return jsonify({"error": str(e)}), 500
 
 
-# ✅ Root check
+# ✅ Root Check
 @app.route("/", methods=["GET"])
 def home():
     return "✅ SRJahir Tools API running successfully!"
