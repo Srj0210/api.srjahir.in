@@ -7,20 +7,21 @@ ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 ENV DOCKER_BUILDKIT=0
 
-# ✅ Install LibreOffice + Universal Indic Fonts (Gujarati, Hindi, Marathi, Bengali included)
+# ✅ Install LibreOffice + Universal Indic Fonts + Unoconv
 RUN apt-get update && apt-get install -y \
     libreoffice \
     libreoffice-writer \
     libreoffice-draw \
     libreoffice-calc \
     libreoffice-impress \
+    unoconv \               # ✅ this line added
     fonts-dejavu-core \
     fonts-noto-core \
     fonts-noto-ui-core \
     fonts-noto-mono \
     fonts-noto-color-emoji \
     locales \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+ && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ✅ Generate UTF-8 locale (important for Indian scripts)
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
