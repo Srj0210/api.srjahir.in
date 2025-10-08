@@ -52,7 +52,12 @@ def word_to_pdf():
         safe_remove(input_path)
 
         # Return PDF
-        return send_file(output_path, as_attachment=True, download_name=output_name)
+from werkzeug.utils import secure_filename
+
+original_name = os.path.splitext(secure_filename(file.filename))[0]
+output_filename = f"{original_name}.pdf"
+
+return send_file(output_path, as_attachment=True, download_name=output_filename)
     except subprocess.CalledProcessError:
         return jsonify({"error": "Conversion failed — LibreOffice not available"}), 500
     except Exception as e:
