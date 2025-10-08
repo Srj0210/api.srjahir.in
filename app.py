@@ -1,5 +1,4 @@
 import os
-import tempfile
 import subprocess
 from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
@@ -18,7 +17,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 
-# ✅ Auto-delete function (cleanup after download)
+# ✅ Auto-delete function
 def safe_remove(path):
     try:
         if os.path.exists(path):
@@ -39,8 +38,9 @@ def word_to_pdf():
         input_path = os.path.join(UPLOAD_FOLDER, filename)
         file.save(input_path)
 
-        output_name = os.path.splitext(filename)[0] + ".pdf"
-        output_path = os.path.join(OUTPUT_FOLDER, output_name)
+        original_name = os.path.splitext(filename)[0]
+        output_filename = f"{original_name}.pdf"
+        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
 
         # LibreOffice conversion
         subprocess.run([
@@ -51,19 +51,15 @@ def word_to_pdf():
         # Auto-delete input
         safe_remove(input_path)
 
-        # Return PDF
-from werkzeug.utils import secure_filename
+        # Return PDF and auto-delete output after send
+        response = send_file(output_path, as_attachment=True, download_name=output_filename)
+        safe_remove(output_path)
+        return response
 
-original_name = os.path.splitext(secure_filename(file.filename))[0]
-output_filename = f"{original_name}.pdf"
-
-return send_file(output_path, as_attachment=True, download_name=output_filename)
     except subprocess.CalledProcessError:
         return jsonify({"error": "Conversion failed — LibreOffice not available"}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    finally:
-        pass
 
 
 # ✅ PDF → Word
@@ -83,15 +79,16 @@ def pdf_to_word():
 
         doc = Document()
         pdf = fitz.open(input_path)
-
         for page in pdf:
             text = page.get_text("text")
             doc.add_paragraph(text)
-
         doc.save(output_path)
 
         safe_remove(input_path)
-        return send_file(output_path, as_attachment=True, download_name=output_name)
+        response = send_file(output_path, as_attachment=True, download_name=output_name)
+        safe_remove(output_path)
+        return response
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -118,10 +115,14 @@ def merge_pdf():
         merger.write(output_path)
         merger.close()
 
+        # Delete temporary input files
         for f in temp_files:
             safe_remove(f)
 
-        return send_file(output_path, as_attachment=True, download_name="merged.pdf")
+        response = send_file(output_path, as_attachment=True, download_name="merged.pdf")
+        safe_remove(output_path)
+        return response
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -138,17 +139,19 @@ def text_to_pdf():
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Helvetica", size=12)
-
         for line in text.split("\n"):
             pdf.multi_cell(0, 10, line)
-
         pdf.output(output_path)
 
-        return send_file(output_path, as_attachment=True, download_name="text.pdf")
+        response = send_file(output_path, as_attachment=True, download_name="text.pdf")
+        safe_remove(output_path)
+        return response
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
+# ✅ Root check
 @app.route("/", methods=["GET"])
 def home():
     return "✅ SRJahir Tools API running successfully!"
