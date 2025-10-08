@@ -154,20 +154,45 @@ def word_to_pdf():
 def pdf_to_word():
     try:
         file = request.files["file"]
+        if not file:
+            return jsonify({"error": "No file uploaded"}), 400
+
         input_path = os.path.join("uploads", file.filename)
         output_name = os.path.splitext(file.filename)[0] + ".docx"
         output_path = os.path.join("outputs", output_name)
+
+        os.makedirs("uploads", exist_ok=True)
+        os.makedirs("outputs", exist_ok=True)
         file.save(input_path)
 
-        # Convert PDF → DOCX using LibreOffice CLI directly (no unoconv)
-        os.system(f'libreoffice --headless --invisible --convert-to docx "{input_path}" --outdir outputs')
+        # ✅ Convert using LibreOffice CLI (headless mode)
+        cmd = [
+            "soffice",
+            "--headless",
+            "--convert-to", "docx",
+            "--outdir", "outputs",
+            input_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
 
-        if not os.path.exists(output_path):
+        if result.returncode != 0:
+            print("Conversion Error:", result.stderr)
             return jsonify({"error": "Conversion failed"}), 500
 
-        # Send file to client
-        return send_file(output_path, as_attachment=True, download_name=output_name)
+        # ✅ Send converted file to user
+        response = send_file(
+            output_path,
+            as_attachment=True,
+            download_name=output_name
+        )
+
+        # ✅ Cleanup input/output after send
+        threading.Thread(target=cleanup_files, args=([input_path, output_path], 5)).start()
+
+        return response
+
     except Exception as e:
+        print("PDF→Word Error:", e)
         return jsonify({"error": str(e)}), 500
 
 
