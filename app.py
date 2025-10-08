@@ -153,80 +153,49 @@ def word_to_pdf():
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
     try:
-        file = request.files.get("file")
-        if not file:
-            return jsonify({"error": "No file uploaded"}), 400
-
-        filename = secure_filename(file.filename)
-        input_path = os.path.join(UPLOAD_FOLDER, filename)
+        file = request.files["file"]
+        input_path = os.path.join("uploads", file.filename)
+        output_name = os.path.splitext(file.filename)[0] + ".docx"
+        output_path = os.path.join("outputs", output_name)
         file.save(input_path)
 
-        original_name = os.path.splitext(filename)[0]
-        output_filename = f"{original_name}.docx"
-        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+        # Convert PDF → DOCX using LibreOffice CLI directly (no unoconv)
+        os.system(f'libreoffice --headless --invisible --convert-to docx "{input_path}" --outdir outputs')
 
-        # ✅ Try conversion via unoconv (most reliable for PDF -> DOCX)
-        subprocess.run([
-            "unoconv", "-f", "docx", "-o", output_path, input_path
-        ], check=True)
+        if not os.path.exists(output_path):
+            return jsonify({"error": "Conversion failed"}), 500
 
-        @after_this_request
-        def cleanup(response):
-            safe_remove(input_path)
-            return response
-
-        resp = send_file(output_path, as_attachment=True, download_name=output_filename)
-        safe_remove(output_path)
-        return resp
-
-    except subprocess.CalledProcessError:
-        safe_remove(input_path)
-        return jsonify({
-            "error": "Conversion failed — LibreOffice or unoconv not available"
-        }), 500
+        # Send file to client
+        return send_file(output_path, as_attachment=True, download_name=output_name)
     except Exception as e:
-        safe_remove(input_path)
         return jsonify({"error": str(e)}), 500
 
 
 # ---------------------------
 # Merge PDF (lossless)
 # ---------------------------
+from PyPDF2 import PdfMerger
+
 @app.route("/merge-pdf", methods=["POST"])
 def merge_pdf():
     try:
         files = request.files.getlist("files")
-        if not files or len(files) < 1:
+        if not files:
             return jsonify({"error": "No files uploaded"}), 400
 
         merger = PdfMerger()
-        temp_paths = []
-
         for file in files:
-            fn = secure_filename(file.filename)
-            p = os.path.join(UPLOAD_FOLDER, fn)
-            file.save(p)
-            merger.append(p)
-            temp_paths.append(p)
+            path = os.path.join("uploads", file.filename)
+            file.save(path)
+            merger.append(path)
 
-        output_filename = "merged.pdf"
-        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+        output_name = "merged_" + files[0].filename.replace(".pdf", "") + ".pdf"
+        output_path = os.path.join("outputs", output_name)
         merger.write(output_path)
         merger.close()
 
-        @after_this_request
-        def cleanup(response):
-            for t in temp_paths:
-                safe_remove(t)
-            return response
-
-        resp = send_file(output_path, as_attachment=True, download_name=output_filename)
-        safe_remove(output_path)
-        return resp
-
+        return send_file(output_path, as_attachment=True, download_name=output_name)
     except Exception as e:
-        for t in temp_paths:
-            safe_remove(t)
         return jsonify({"error": str(e)}), 500
 
 
