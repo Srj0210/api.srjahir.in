@@ -5,8 +5,6 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from PyPDF2 import PdfMerger
 from fpdf import FPDF
-from docx import Document
-import fitz  # PyMuPDF
 
 app = Flask(__name__)
 CORS(app)
@@ -17,7 +15,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 
-# ✅ Auto-delete helper
+# ✅ Auto-delete after processing
 def safe_remove(path):
     try:
         if os.path.exists(path):
@@ -26,7 +24,7 @@ def safe_remove(path):
         print(f"⚠️ Failed to delete {path}: {e}")
 
 
-# ✅ Word → PDF
+# ✅ Word → PDF (Perfect formatting)
 @app.route("/word-to-pdf", methods=["POST"])
 def word_to_pdf():
     try:
@@ -42,35 +40,24 @@ def word_to_pdf():
         output_filename = f"{original_name}.pdf"
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
 
-        # LibreOffice conversion
         subprocess.run([
             "libreoffice", "--headless", "--convert-to", "pdf",
             "--outdir", OUTPUT_FOLDER, input_path
         ], check=True)
 
-        # LibreOffice output path (actual file)
-        converted_name = os.path.splitext(filename)[0] + ".pdf"
-        converted_path = os.path.join(OUTPUT_FOLDER, converted_name)
-
-        # Rename file (in case LibreOffice named differently)
-        if converted_path != output_path and os.path.exists(converted_path):
-            os.rename(converted_path, output_path)
-
-        # Delete input file
         safe_remove(input_path)
 
-        # Return + delete output after sending
         response = send_file(output_path, as_attachment=True, download_name=output_filename)
         safe_remove(output_path)
         return response
 
     except subprocess.CalledProcessError:
-        return jsonify({"error": "Conversion failed — LibreOffice not available"}), 500
+        return jsonify({"error": "LibreOffice conversion failed"}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# ✅ PDF → Word
+# ✅ PDF → Word (Accurate formatting)
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
     try:
@@ -82,56 +69,57 @@ def pdf_to_word():
         input_path = os.path.join(UPLOAD_FOLDER, filename)
         file.save(input_path)
 
-        output_name = os.path.splitext(filename)[0] + ".docx"
-        output_path = os.path.join(OUTPUT_FOLDER, output_name)
+        original_name = os.path.splitext(filename)[0]
+        output_filename = f"{original_name}.docx"
+        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
 
-        doc = Document()
-        pdf = fitz.open(input_path)
-        for page in pdf:
-            text = page.get_text("text")
-            doc.add_paragraph(text)
-        doc.save(output_path)
+        subprocess.run([
+            "libreoffice", "--headless", "--convert-to", "docx",
+            "--outdir", OUTPUT_FOLDER, input_path
+        ], check=True)
 
-        # Delete input after conversion
         safe_remove(input_path)
 
-        # Send + delete output
-        response = send_file(output_path, as_attachment=True, download_name=output_name)
+        response = send_file(output_path, as_attachment=True, download_name=output_filename)
         safe_remove(output_path)
         return response
 
+    except subprocess.CalledProcessError:
+        return jsonify({"error": "LibreOffice conversion failed"}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# ✅ Merge PDF
+# ✅ Merge PDF (100% Original Quality)
 @app.route("/merge-pdf", methods=["POST"])
 def merge_pdf():
     try:
         files = request.files.getlist("files")
-        if not files:
-            return jsonify({"error": "No files uploaded"}), 400
+        if not files or len(files) < 2:
+            return jsonify({"error": "Please upload at least 2 PDF files"}), 400
 
         merger = PdfMerger()
-        temp_files = []
+        temp_paths = []
 
         for file in files:
             filename = secure_filename(file.filename)
             path = os.path.join(UPLOAD_FOLDER, filename)
             file.save(path)
             merger.append(path)
-            temp_files.append(path)
+            temp_paths.append(path)
 
-        output_path = os.path.join(OUTPUT_FOLDER, "merged.pdf")
+        output_filename = "merged_output.pdf"
+        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+
         merger.write(output_path)
         merger.close()
 
-        # Delete all input files
-        for f in temp_files:
-            safe_remove(f)
+        # Clean inputs
+        for path in temp_paths:
+            safe_remove(path)
 
-        # Send + delete output
-        response = send_file(output_path, as_attachment=True, download_name="merged.pdf")
+        # Return merged file
+        response = send_file(output_path, as_attachment=True, download_name=output_filename)
         safe_remove(output_path)
         return response
 
@@ -147,16 +135,17 @@ def text_to_pdf():
         if not text:
             return jsonify({"error": "No text provided"}), 400
 
-        output_path = os.path.join(OUTPUT_FOLDER, "output.pdf")
-
+        output_path = os.path.join(OUTPUT_FOLDER, "text_output.pdf")
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Helvetica", size=12)
+
         for line in text.split("\n"):
             pdf.multi_cell(0, 10, line)
+
         pdf.output(output_path)
 
-        response = send_file(output_path, as_attachment=True, download_name="text.pdf")
+        response = send_file(output_path, as_attachment=True, download_name="text_output.pdf")
         safe_remove(output_path)
         return response
 
@@ -164,10 +153,9 @@ def text_to_pdf():
         return jsonify({"error": str(e)}), 500
 
 
-# ✅ Root Check
 @app.route("/", methods=["GET"])
 def home():
-    return "✅ SRJahir Tools API running successfully!"
+    return "✅ SRJahir Tools PRO — All-in-One Accurate Conversion API is Live!"
 
 
 if __name__ == "__main__":
