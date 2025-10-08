@@ -148,7 +148,7 @@ def word_to_pdf():
 
 
 # ---------------------------
-# PDF -> Word (LibreOffice-based; preserves layout)
+# PDF -> Word (Unoconv + LibreOffice)
 # ---------------------------
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
@@ -165,19 +165,10 @@ def pdf_to_word():
         output_filename = f"{original_name}.docx"
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
 
-        # Use LibreOffice to convert PDF -> DOCX (keeps layout)
+        # ✅ Try conversion via unoconv (most reliable for PDF -> DOCX)
         subprocess.run([
-            "libreoffice", "--headless", "--convert-to", "docx",
-            "--outdir", OUTPUT_FOLDER, input_path
+            "unoconv", "-f", "docx", "-o", output_path, input_path
         ], check=True)
-
-        # LibreOffice creates inputbase.docx
-        converted = os.path.join(OUTPUT_FOLDER, os.path.splitext(filename)[0] + ".docx")
-        if os.path.exists(converted) and converted != output_path:
-            try:
-                os.replace(converted, output_path)
-            except Exception:
-                pass
 
         @after_this_request
         def cleanup(response):
@@ -188,9 +179,11 @@ def pdf_to_word():
         safe_remove(output_path)
         return resp
 
-    except subprocess.CalledProcessError as cpe:
+    except subprocess.CalledProcessError:
         safe_remove(input_path)
-        return jsonify({"error": "LibreOffice conversion failed", "detail": str(cpe)}), 500
+        return jsonify({
+            "error": "Conversion failed — LibreOffice or unoconv not available"
+        }), 500
     except Exception as e:
         safe_remove(input_path)
         return jsonify({"error": str(e)}), 500
