@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     libreoffice-draw \
     libreoffice-calc \
     libreoffice-impress \
+    libreoffice-core \
     libreoffice-common \
     libreoffice-java-common \
     python3-uno \
@@ -32,15 +33,18 @@ WORKDIR /app
 # ✅ Copy everything
 COPY . /app
 
-# ✅ Install Python deps
+# ✅ Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt gunicorn PyPDF2
 
 # ✅ Verify LibreOffice + UNO
 RUN which libreoffice && libreoffice --version
 
+# ✅ Create output/upload directories with write permissions
+RUN mkdir -p /app/uploads /app/outputs && chmod -R 777 /app/uploads /app/outputs
+
 # ✅ Expose port
 EXPOSE 10000
 ENV PORT=10000
 
-# ✅ Run Gunicorn
+# ✅ Start Gunicorn server
 CMD exec gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 180
