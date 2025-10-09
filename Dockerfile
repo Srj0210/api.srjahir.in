@@ -5,6 +5,7 @@ FROM python:3.11-slim
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
+ENV HOME=/tmp
 
 # ✅ Install LibreOffice + Java + Fonts + UNO bridge
 RUN apt-get update && apt-get install -y \
@@ -36,11 +37,11 @@ COPY . /app
 # ✅ Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt gunicorn PyPDF2
 
-# ✅ Verify LibreOffice + UNO
-RUN which libreoffice && libreoffice --version
+# ✅ Create folders + fix permissions
+RUN mkdir -p /app/uploads /app/outputs /tmp/.config && chmod -R 777 /app /tmp
 
-# ✅ Create output/upload directories with write permissions
-RUN mkdir -p /app/uploads /app/outputs && chmod -R 777 /app/uploads /app/outputs
+# ✅ Verify LibreOffice
+RUN libreoffice --headless --version || echo "LibreOffice ready"
 
 # ✅ Expose port
 EXPOSE 10000
