@@ -145,7 +145,7 @@ def pdf_to_word():
         file.save(input_path)
 
         base_name = os.path.splitext(filename)[0]
-        safe_name = re.sub(r'[^\w\s.-]', '', base_name)  # remove emojis / symbols
+        safe_name = re.sub(r'[^\w\s.-]', '', base_name)
         output_name = f"{safe_name}.docx"
         output_path = os.path.join(output_dir, output_name)
 
@@ -160,6 +160,7 @@ def pdf_to_word():
             "--outdir", output_dir,
             input_path
         ]
+
         result = subprocess.run(cmd, capture_output=True, text=True)
 
         if result.returncode != 0:
@@ -175,7 +176,13 @@ def pdf_to_word():
         return response
 
     except Exception as e:
-        print("PDF→Word Error:", e)
+        error_message = f"PDF→Word Error: {e}"
+        print(error_message)
+        try:
+            with open("/app/outputs/error_log.txt", "a") as f:
+                f.write(error_message + "\n")
+        except Exception as file_err:
+            print("⚠️ Could not write error log:", file_err)
         return jsonify({"error": str(e)}), 500
 
 
