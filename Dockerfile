@@ -1,4 +1,4 @@
-# ✅ Base Image
+# ✅ Base Image (lightweight + stable)
 FROM python:3.11-slim
 
 # ✅ Environment
@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y \
     python3-uno \
     default-jre \
     fonts-dejavu-core \
+    fonts-liberation \
     fonts-noto-core \
     fonts-noto-ui-core \
     fonts-noto-mono \
@@ -31,19 +32,19 @@ RUN apt-get update && apt-get install -y \
 # ✅ Set working directory
 WORKDIR /app
 
-# ✅ Copy everything
+# ✅ Copy all project files
 COPY . /app
 
 # ✅ Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt gunicorn PyPDF2
 
-# ✅ Create folders + fix permissions
-RUN mkdir -p /app/uploads /app/outputs /tmp/.config && chmod -R 777 /app /tmp
+# ✅ Create folders + fix permissions (Render-safe temp storage)
+RUN mkdir -p /app/uploads /tmp/outputs /tmp/.config && chmod -R 777 /app /tmp
 
-# ✅ Verify LibreOffice
+# ✅ Verify LibreOffice installation
 RUN libreoffice --headless --version || echo "LibreOffice ready"
 
-# ✅ Expose port
+# ✅ Expose API port
 EXPOSE 10000
 ENV PORT=10000
 
