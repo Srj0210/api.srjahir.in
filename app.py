@@ -132,7 +132,9 @@ def word_to_pdf():
 # PDF → Word (LibreOffice)
 # ---------------------------
 from pdf2docx import Converter
-import fitz  # PyMuPDF for fallback
+import fitz  # PyMuPDF fallback
+from docx import Document
+import threading, time
 
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
@@ -147,39 +149,47 @@ def pdf_to_word():
         output_path = os.path.join(OUTPUT_FOLDER, output_name)
         file.save(input_path)
 
+        conversion_success = False
+
         try:
-            # Try professional conversion
+            # 🟢 Try main pdf2docx conversion
             cv = Converter(input_path)
             cv.convert(output_path, start=0, end=None)
             cv.close()
-
+            conversion_success = True
         except Exception as e:
             print(f"⚠️ pdf2docx failed: {e}")
-            # Fallback conversion: extract plain text
-            doc = fitz.open(input_path)
-            text_content = "\n".join(page.get_text("text") for page in doc)
-            doc.close()
+            conversion_success = False
 
-            from docx import Document
-            word_doc = Document()
-            for line in text_content.splitlines():
-                word_doc.add_paragraph(line)
-            word_doc.save(output_path)
+        if not conversion_success:
+            print("🔄 Switching to PyMuPDF fallback...")
+            try:
+                doc = fitz.open(input_path)
+                text = "\n".join(page.get_text("text") for page in doc)
+                doc.close()
+
+                word_doc = Document()
+                for line in text.splitlines():
+                    word_doc.add_paragraph(line)
+                word_doc.save(output_path)
+                conversion_success = True
+            except Exception as ex:
+                print(f"❌ Fallback also failed: {ex}")
+                return jsonify({"error": "Both conversions failed"}), 500
 
         if not os.path.exists(output_path):
-            return jsonify({"error": "Conversion failed"}), 500
+            return jsonify({"error": "Output file not found"}), 500
 
-        # Serve file safely
+        # Serve result
         response = send_file(output_path, as_attachment=True, download_name=output_name)
 
+        # Background cleanup
         def delayed_cleanup():
-            import time
             time.sleep(5)
             safe_remove(input_path)
             safe_remove(output_path)
 
         threading.Thread(target=delayed_cleanup, daemon=True).start()
-
         return response
 
     except Exception as e:
