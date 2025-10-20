@@ -131,60 +131,43 @@ def word_to_pdf():
 # ---------------------------
 # PDF → Word (LibreOffice)
 # ---------------------------
+# 🟢 PDF → Word (Professional via pdf2docx)
+from pdf2docx import Converter
+
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
     try:
-        file = request.files["file"]
+        file = request.files.get("file")
         if not file:
             return jsonify({"error": "No file uploaded"}), 400
 
         filename = secure_filename(file.filename)
         input_path = os.path.join(UPLOAD_FOLDER, filename)
-        output_dir = OUTPUT_FOLDER
-        os.makedirs(output_dir, exist_ok=True)
+        output_name = os.path.splitext(filename)[0] + ".docx"
+        output_path = os.path.join(OUTPUT_FOLDER, output_name)
+
         file.save(input_path)
 
-        base_name = os.path.splitext(filename)[0]
-        safe_name = re.sub(r'[^\w\s.-]', '', base_name)
-        output_name = f"{safe_name}.docx"
-        output_path = os.path.join(output_dir, output_name)
+        # Convert PDF to Word
+        cv = Converter(input_path)
+        cv.convert(output_path, start=0, end=None)
+        cv.close()
 
-        soffice_path = "/usr/bin/soffice"
-        if not os.path.exists(soffice_path):
-            soffice_path = "/usr/bin/libreoffice"
-
-        cmd = [
-            soffice_path,
-            "--headless",
-            "--convert-to", "docx:MS Word 2007 XML",
-            "--outdir", output_dir,
-            input_path
-        ]
-
-        result = subprocess.run(cmd, capture_output=True, text=True)
-
-        if result.returncode != 0:
-            print("LibreOffice error:", result.stderr)
+        # Ensure file created
+        if not os.path.exists(output_path):
             return jsonify({"error": "Conversion failed"}), 500
 
-        if not os.path.exists(output_path):
-            print("Output not found:", result.stderr)
-            return jsonify({"error": "Output file missing"}), 500
+        @after_this_request
+        def cleanup(response):
+            safe_remove(input_path)
+            safe_remove(output_path)
+            return response
 
-        response = send_file(output_path, as_attachment=True, download_name=output_name)
-        threading.Thread(target=cleanup_files, args=([input_path, output_path], 5)).start()
-        return response
+        return send_file(output_path, as_attachment=True, download_name=output_name)
 
     except Exception as e:
-        error_message = f"PDF→Word Error: {e}"
-        print(error_message)
-        try:
-            with open("/app/outputs/error_log.txt", "a") as f:
-                f.write(error_message + "\n")
-        except Exception as file_err:
-            print("⚠️ Could not write error log:", file_err)
-        return jsonify({"error": str(e)}), 500
-
+        print(f"❌ PDF→Word Conversion Error: {e}")
+        return jsonify({"error": f"PDF→Word failed: {str(e)}"}), 500
 
 # ---------------------------
 # Merge PDFs
