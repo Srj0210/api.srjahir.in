@@ -131,11 +131,6 @@ def word_to_pdf():
 # ---------------------------
 # PDF → Word (LibreOffice)
 # ---------------------------
-from pdf2docx import Converter
-import fitz  # PyMuPDF fallback
-from docx import Document
-import threading, time
-
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
     try:
@@ -144,57 +139,32 @@ def pdf_to_word():
             return jsonify({"error": "No file uploaded"}), 400
 
         filename = secure_filename(file.filename)
-        input_path = os.path.join(UPLOAD_FOLDER, filename)
-        output_name = os.path.splitext(filename)[0] + ".docx"
-        output_path = os.path.join(OUTPUT_FOLDER, output_name)
+        input_path = os.path.join("/tmp", filename)
         file.save(input_path)
 
-        conversion_success = False
+        output_name = os.path.splitext(filename)[0] + ".docx"
+        output_path = os.path.join("/tmp", output_name)
 
-        try:
-            # 🟢 Try main pdf2docx conversion
-            cv = Converter(input_path)
-            cv.convert(output_path, start=0, end=None)
-            cv.close()
-            conversion_success = True
-        except Exception as e:
-            print(f"⚠️ pdf2docx failed: {e}")
-            conversion_success = False
+        # Force LibreOffice to use Writer engine for conversion
+        result = subprocess.run([
+            "libreoffice",
+            "--headless",
+            "--convert-to", "docx:writer8",
+            "--outdir", "/tmp",
+            input_path
+        ], capture_output=True, text=True)
 
-        if not conversion_success:
-            print("🔄 Switching to PyMuPDF fallback...")
-            try:
-                doc = fitz.open(input_path)
-                text = "\n".join(page.get_text("text") for page in doc)
-                doc.close()
+        print("LibreOffice STDOUT:", result.stdout)
+        print("LibreOffice STDERR:", result.stderr)
 
-                word_doc = Document()
-                for line in text.splitlines():
-                    word_doc.add_paragraph(line)
-                word_doc.save(output_path)
-                conversion_success = True
-            except Exception as ex:
-                print(f"❌ Fallback also failed: {ex}")
-                return jsonify({"error": "Both conversions failed"}), 500
+        if result.returncode != 0 or not os.path.exists(output_path):
+            return jsonify({"error": "Conversion failed", "details": result.stderr}), 500
 
-        if not os.path.exists(output_path):
-            return jsonify({"error": "Output file not found"}), 500
-
-        # Serve result
-        response = send_file(output_path, as_attachment=True, download_name=output_name)
-
-        # Background cleanup
-        def delayed_cleanup():
-            time.sleep(5)
-            safe_remove(input_path)
-            safe_remove(output_path)
-
-        threading.Thread(target=delayed_cleanup, daemon=True).start()
-        return response
+        return send_file(output_path, as_attachment=True, download_name=output_name)
 
     except Exception as e:
         print(f"❌ PDF→Word Error: {e}")
-        return jsonify({"error": f"PDF→Word failed: {str(e)}"}), 500
+        return jsonify({"error": str(e)}), 500
 # ---------------------------
 # Merge PDFs
 # ---------------------------
