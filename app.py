@@ -131,10 +131,8 @@ def word_to_pdf():
 # ---------------------------
 # PDF → Word (LibreOffice)
 # ---------------------------
-# 🟢 PDF → Word (Professional, Render-safe)
 from pdf2docx import Converter
-import threading
-import time
+import fitz  # PyMuPDF for fallback
 
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
@@ -149,19 +147,33 @@ def pdf_to_word():
         output_path = os.path.join(OUTPUT_FOLDER, output_name)
         file.save(input_path)
 
-        # Convert PDF → Word (preserving layout)
-        cv = Converter(input_path)
-        cv.convert(output_path, start=0, end=None)
-        cv.close()
+        try:
+            # Try professional conversion
+            cv = Converter(input_path)
+            cv.convert(output_path, start=0, end=None)
+            cv.close()
+
+        except Exception as e:
+            print(f"⚠️ pdf2docx failed: {e}")
+            # Fallback conversion: extract plain text
+            doc = fitz.open(input_path)
+            text_content = "\n".join(page.get_text("text") for page in doc)
+            doc.close()
+
+            from docx import Document
+            word_doc = Document()
+            for line in text_content.splitlines():
+                word_doc.add_paragraph(line)
+            word_doc.save(output_path)
 
         if not os.path.exists(output_path):
-            return jsonify({"error": "Conversion failed — output missing"}), 500
+            return jsonify({"error": "Conversion failed"}), 500
 
-        # Serve file first
+        # Serve file safely
         response = send_file(output_path, as_attachment=True, download_name=output_name)
 
-        # Cleanup safely in background
         def delayed_cleanup():
+            import time
             time.sleep(5)
             safe_remove(input_path)
             safe_remove(output_path)
@@ -173,7 +185,6 @@ def pdf_to_word():
     except Exception as e:
         print(f"❌ PDF→Word Error: {e}")
         return jsonify({"error": f"PDF→Word failed: {str(e)}"}), 500
-
 # ---------------------------
 # Merge PDFs
 # ---------------------------
