@@ -131,7 +131,7 @@ def word_to_pdf():
 # ---------------------------
 # PDF → Word (LibreOffice)
 # ---------------------------
-# 🟢 PDF → Word (Professional via pdf2docx)
+# 🟢 PDF → Word (Professional, pdf2docx)
 from pdf2docx import Converter
 
 @app.route("/pdf-to-word", methods=["POST"])
@@ -145,15 +145,13 @@ def pdf_to_word():
         input_path = os.path.join(UPLOAD_FOLDER, filename)
         output_name = os.path.splitext(filename)[0] + ".docx"
         output_path = os.path.join(OUTPUT_FOLDER, output_name)
-
         file.save(input_path)
 
-        # Convert PDF to Word
+        # Convert PDF to Word professionally
         cv = Converter(input_path)
         cv.convert(output_path, start=0, end=None)
         cv.close()
 
-        # Ensure file created
         if not os.path.exists(output_path):
             return jsonify({"error": "Conversion failed"}), 500
 
@@ -166,7 +164,7 @@ def pdf_to_word():
         return send_file(output_path, as_attachment=True, download_name=output_name)
 
     except Exception as e:
-        print(f"❌ PDF→Word Conversion Error: {e}")
+        print(f"❌ PDF→Word Error: {e}")
         return jsonify({"error": f"PDF→Word failed: {str(e)}"}), 500
 
 # ---------------------------
