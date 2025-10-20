@@ -11,8 +11,9 @@ from fpdf import FPDF
 app = Flask(__name__)
 CORS(app)
 
-UPLOAD_FOLDER = "uploads"
-OUTPUT_FOLDER = "outputs"
+# ✅ Use /tmp for Render-safe read/write operations
+UPLOAD_FOLDER = "/tmp/uploads"
+OUTPUT_FOLDER = "/tmp/outputs"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
@@ -97,9 +98,7 @@ def word_to_pdf():
         input_path = os.path.join(UPLOAD_FOLDER, filename)
         file.save(input_path)
 
-        original_name = os.path.splitext(filename)[0]
-        safe_name = re.sub(r'[^\w\s.-]', '', original_name)
-        output_filename = f"{safe_name}.pdf"
+        output_filename = os.path.splitext(filename)[0] + ".pdf"
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
 
         subprocess.run([
@@ -107,18 +106,13 @@ def word_to_pdf():
             "--outdir", OUTPUT_FOLDER, input_path
         ], check=True)
 
-        converted = os.path.join(OUTPUT_FOLDER, os.path.splitext(filename)[0] + ".pdf")
-        if os.path.exists(converted) and converted != output_path:
-            os.replace(converted, output_path)
-
         @after_this_request
         def cleanup(response):
             safe_remove(input_path)
+            safe_remove(output_path)
             return response
 
-        resp = send_file(output_path, as_attachment=True, download_name=output_filename)
-        safe_remove(output_path)
-        return resp
+        return send_file(output_path, as_attachment=True, download_name=output_filename)
 
     except subprocess.CalledProcessError:
         safe_remove(input_path)
@@ -129,7 +123,7 @@ def word_to_pdf():
 
 
 # ---------------------------
-# PDF → Word (LibreOffice)
+# PDF → Word (LibreOffice, Fixed)
 # ---------------------------
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
@@ -139,31 +133,36 @@ def pdf_to_word():
             return jsonify({"error": "No file uploaded"}), 400
 
         filename = secure_filename(file.filename)
-        input_path = os.path.join("/tmp", filename)
+        input_path = os.path.join(UPLOAD_FOLDER, filename)
         file.save(input_path)
 
         output_name = os.path.splitext(filename)[0] + ".docx"
-        output_path = os.path.join("/tmp", output_name)
+        output_path = os.path.join(OUTPUT_FOLDER, output_name)
 
-        # 🧠 Convert using LibreOffice (Draw backend)
-        result = subprocess.run([
+        # ✅ Convert using LibreOffice (Writer filter)
+        cmd = [
             "libreoffice",
             "--headless",
             "--nologo",
             "--convert-to", "docx:MS Word 2007 XML",
-            "--outdir", "/tmp",
+            "--outdir", OUTPUT_FOLDER,
             input_path
-        ], capture_output=True, text=True)
-
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
         print("STDOUT:", result.stdout)
         print("STDERR:", result.stderr)
 
         if result.returncode != 0:
-            return jsonify({"error": "Conversion failed", "details": result.stderr}), 500
+            raise Exception("LibreOffice conversion failed")
 
-        # 🧩 Verify the file exists and has content
-        if not os.path.exists(output_path) or os.path.getsize(output_path) < 1000:
-            return jsonify({"error": "Output file corrupted or empty"}), 500
+        if not os.path.exists(output_path) or os.path.getsize(output_path) < 2000:
+            raise Exception("Output file seems empty or corrupted")
+
+        @after_this_request
+        def cleanup(response):
+            safe_remove(input_path)
+            safe_remove(output_path)
+            return response
 
         return send_file(output_path, as_attachment=True, download_name=output_name)
 
@@ -213,11 +212,10 @@ def split_pdf():
         @after_this_request
         def cleanup(response):
             safe_remove(input_path)
+            safe_remove(output_path)
             return response
 
-        resp = send_file(output_path, as_attachment=True, download_name=output_filename)
-        safe_remove(output_path)
-        return resp
+        return send_file(output_path, as_attachment=True, download_name=output_filename)
 
     except Exception as e:
         safe_remove(input_path)
@@ -247,18 +245,17 @@ def text_to_pdf():
 
         @after_this_request
         def cleanup(response):
+            safe_remove(output_path)
             return response
 
-        resp = send_file(output_path, as_attachment=True, download_name="text.pdf")
-        safe_remove(output_path)
-        return resp
+        return send_file(output_path, as_attachment=True, download_name="text.pdf")
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 # ---------------------------
-# Root
+# Root Endpoint
 # ---------------------------
 @app.route("/", methods=["GET"])
 def home():
