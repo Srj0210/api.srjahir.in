@@ -19,17 +19,25 @@ RUN apt-get update && apt-get install -y \
     libreoffice-java-common \
     python3-uno \
     default-jre \
+    # ✅ Fonts pack for full rendering (English + Indic + Emoji)
     fonts-dejavu-core \
+    fonts-dejavu-extra \
     fonts-liberation \
     fonts-noto-core \
     fonts-noto-ui-core \
     fonts-noto-mono \
     fonts-noto-color-emoji \
+    fonts-noto-extra \
+    fonts-freefont-ttf \
+    fonts-lohit-deva \
+    fonts-lohit-gujr \
+    fonts-lohit-beng \
+    fonts-lohit-guru \
     locales \
     && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# ✅ Set working directory
+# ✅ Working directory
 WORKDIR /app
 
 # ✅ Copy all project files
