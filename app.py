@@ -131,8 +131,10 @@ def word_to_pdf():
 # ---------------------------
 # PDF → Word (LibreOffice)
 # ---------------------------
-# 🟢 PDF → Word (Professional, pdf2docx)
+# 🟢 PDF → Word (Professional, Render-safe)
 from pdf2docx import Converter
+import threading
+import time
 
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
@@ -147,21 +149,26 @@ def pdf_to_word():
         output_path = os.path.join(OUTPUT_FOLDER, output_name)
         file.save(input_path)
 
-        # Convert PDF to Word professionally
+        # Convert PDF → Word (preserving layout)
         cv = Converter(input_path)
         cv.convert(output_path, start=0, end=None)
         cv.close()
 
         if not os.path.exists(output_path):
-            return jsonify({"error": "Conversion failed"}), 500
+            return jsonify({"error": "Conversion failed — output missing"}), 500
 
-        @after_this_request
-        def cleanup(response):
+        # Serve file first
+        response = send_file(output_path, as_attachment=True, download_name=output_name)
+
+        # Cleanup safely in background
+        def delayed_cleanup():
+            time.sleep(5)
             safe_remove(input_path)
             safe_remove(output_path)
-            return response
 
-        return send_file(output_path, as_attachment=True, download_name=output_name)
+        threading.Thread(target=delayed_cleanup, daemon=True).start()
+
+        return response
 
     except Exception as e:
         print(f"❌ PDF→Word Error: {e}")
