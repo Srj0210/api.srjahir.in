@@ -145,54 +145,30 @@ def pdf_to_word():
         output_name = os.path.splitext(filename)[0] + ".docx"
         output_path = os.path.join("/tmp", output_name)
 
-        # Force LibreOffice to use Writer engine for conversion
+        # 🧠 Convert using LibreOffice (Draw backend)
         result = subprocess.run([
             "libreoffice",
             "--headless",
-            "--convert-to", "docx:writer8",
+            "--nologo",
+            "--convert-to", "docx:MS Word 2007 XML",
             "--outdir", "/tmp",
             input_path
         ], capture_output=True, text=True)
 
-        print("LibreOffice STDOUT:", result.stdout)
-        print("LibreOffice STDERR:", result.stderr)
+        print("STDOUT:", result.stdout)
+        print("STDERR:", result.stderr)
 
-        if result.returncode != 0 or not os.path.exists(output_path):
+        if result.returncode != 0:
             return jsonify({"error": "Conversion failed", "details": result.stderr}), 500
+
+        # 🧩 Verify the file exists and has content
+        if not os.path.exists(output_path) or os.path.getsize(output_path) < 1000:
+            return jsonify({"error": "Output file corrupted or empty"}), 500
 
         return send_file(output_path, as_attachment=True, download_name=output_name)
 
     except Exception as e:
         print(f"❌ PDF→Word Error: {e}")
-        return jsonify({"error": str(e)}), 500
-# ---------------------------
-# Merge PDFs
-# ---------------------------
-@app.route("/merge-pdf", methods=["POST"])
-def merge_pdf():
-    try:
-        files = request.files.getlist("files")
-        if not files:
-            return jsonify({"error": "No files uploaded"}), 400
-
-        merger = PdfMerger()
-        for file in files:
-            path = os.path.join(UPLOAD_FOLDER, secure_filename(file.filename))
-            file.save(path)
-            merger.append(path)
-
-        output_name = "merged_" + secure_filename(files[0].filename.replace(".pdf", "")) + ".pdf"
-        output_path = os.path.join(OUTPUT_FOLDER, output_name)
-        merger.write(output_path)
-        merger.close()
-
-        resp = send_file(output_path, as_attachment=True, download_name=output_name)
-        safe_remove(output_path)
-        for file in files:
-            safe_remove(os.path.join(UPLOAD_FOLDER, secure_filename(file.filename)))
-        return resp
-
-    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
