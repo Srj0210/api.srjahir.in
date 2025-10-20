@@ -1,9 +1,8 @@
-Flask
-gunicorn
-python-docx
-PyMuPDF
-reportlab
+flask
+flask-cors
 pypdf2
 fpdf2
-flask-cors
-werkzeug
+pillow
+python-docx
+pdf2docx
+gunicorn
