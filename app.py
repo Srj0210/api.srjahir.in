@@ -122,77 +122,17 @@ def word_to_pdf():
         return jsonify({"error": str(e)}), 500
 
 
-# ---------------------------
-# PDF → Word (Hybrid Layout Pro Engine)
-# ---------------------------
-@app.route("/pdf-to-word", methods=["POST"])
-def pdf_to_word():
-    import fitz  # PyMuPDF
-    from pdf2docx import Converter
-    from pdf2image import convert_from_path
-    import pytesseract
-    from docx import Document
-    import subprocess
-
-    try:
-        file = request.files.get("file")
-        if not file:
-            return jsonify({"error": "No file uploaded"}), 400
-
-        filename = secure_filename(file.filename)
-        input_path = os.path.join("/tmp", filename)
-        file.save(input_path)
-
-        output_name = os.path.splitext(filename)[0] + ".docx"
-        output_path = os.path.join("/tmp", output_name)
-
-        # Step 1️⃣: Detect if PDF has selectable text
-        text_based = False
-        try:
-            with fitz.open(input_path) as pdf:
-                for page in pdf:
-                    text = page.get_text("text")
-                    if text and text.strip():
-                        text_based = True
-                        break
-        except Exception as e:
-            print("⚠️ Text detection failed:", e)
-
-        # Step 2️⃣: If text-based → use pdf2docx (preserves layout)
-        if text_based:
-            print("🧠 Text-based PDF detected — using pdf2docx engine.")
-            cv = Converter(input_path)
-            cv.convert(output_path, start=0, end=None)
-            cv.close()
-
-        # Step 3️⃣: Else → fallback LibreOffice (image/vector layout fix)
-        else:
-            print("🖼️ Image/Graphic PDF detected — using LibreOffice fallback.")
-            subprocess.run([
-                "libreoffice", "--headless", "--nologo",
-                "--infilter=writer_pdf_import",
-                "--convert-to", "docx:MS Word 2007 XML",
-                "--outdir", "/tmp",
-                input_path
-            ], check=True)
-
-        # Step 4️⃣: Verify & send file
-        if not os.path.exists(output_path) or os.path.getsize(output_path) < 1000:
-            raise Exception("Output file empty or corrupted.")
-
-        os.chmod(output_path, 0o777)
-
-        @after_this_request
-        def cleanup(response):
-            safe_remove(input_path)
-            safe_remove(output_path)
-            return response
-
-        return send_file(output_path, as_attachment=True, download_name=output_name)
-
-    except Exception as e:
-        print(f"❌ PDF→Word Hybrid Error: {e}")
-        return jsonify({"error": str(e)}), 500
+flask
+flask-cors
+pypdf2
+fpdf2
+pillow
+python-docx
+gunicorn
+pdf2docx==0.5.8
+pytesseract
+pdf2image
+PyMuPDF==1.23.8
 
 
 # ---------------------------
