@@ -1,13 +1,13 @@
-# ✅ Base Image (lightweight + stable)
+# ✅ Base Image (Lightweight & Stable)
 FROM python:3.11-slim
 
-# ✅ Environment
+# ✅ Environment setup
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 ENV HOME=/tmp
 
-# ✅ Install LibreOffice + Java + Fonts + UNO bridge
+# ✅ Install system dependencies: LibreOffice + OCR + Fonts + Utilities
 RUN apt-get update && apt-get install -y \
     libreoffice \
     libreoffice-writer \
@@ -19,6 +19,8 @@ RUN apt-get update && apt-get install -y \
     libreoffice-java-common \
     python3-uno \
     default-jre \
+    poppler-utils \
+    tesseract-ocr \
     fonts-dejavu-core \
     fonts-dejavu-extra \
     fonts-noto-core \
@@ -32,13 +34,13 @@ RUN apt-get update && apt-get install -y \
 # ✅ Set working directory
 WORKDIR /app
 
-# ✅ Copy all project files
+# ✅ Copy project files
 COPY . /app
 
-# ✅ Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt gunicorn PyPDF2
+# ✅ Install Python dependencies (all required libs)
+RUN pip install --no-cache-dir -r requirements.txt
 
-# ✅ Create folders + fix permissions (Render-safe temp storage)
+# ✅ Create required directories & set permissions
 RUN mkdir -p /tmp/uploads /tmp/outputs /tmp/.config && chmod -R 777 /app /tmp
 
 # ✅ Verify LibreOffice installation
@@ -48,5 +50,5 @@ RUN libreoffice --headless --version || echo "LibreOffice ready"
 EXPOSE 10000
 ENV PORT=10000
 
-# ✅ Start Gunicorn server
+# ✅ Start Gunicorn Server
 CMD exec gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 180
