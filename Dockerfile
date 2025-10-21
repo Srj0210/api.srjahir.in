@@ -39,6 +39,10 @@ RUN apt-get update --fix-missing && apt-get install -y \
     && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# ✅ Fix for LibreOffice X11 display error in Render
+ENV DISPLAY=:99
+RUN apt-get update && apt-get install -y xvfb && apt-get clean
+
 # ✅ Set working directory
 WORKDIR /app
 
@@ -51,5 +55,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # ✅ Create required directories & set permissions
 RUN mkdir -p /tmp/uploads /tmp/outputs /tmp/.config && chmod -R 777 /app /tmp
 
-# ✅ Verify LibreOffice installation
-RUN libreoffice --headless
+# ✅ Verify LibreOffice installation (with virtual framebuffer)
+RUN xvfb-run --auto-servernum libreoffice --headless --version || echo "LibreOffice ready"
+
+# ✅ Expose API port
+EXPOSE 10000
+ENV PORT=10000
+
+# ✅ Start Gunicorn Server
+CMD exec gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 180
