@@ -123,7 +123,7 @@ def word_to_pdf():
 
 
 # ---------------------------
-# PDF → Word (LibreOffice, Fixed)
+# PDF → Word (Stable Professional Fix)
 # ---------------------------
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
@@ -133,30 +133,33 @@ def pdf_to_word():
             return jsonify({"error": "No file uploaded"}), 400
 
         filename = secure_filename(file.filename)
-        input_path = os.path.join(UPLOAD_FOLDER, filename)
+        input_path = os.path.join("/tmp", filename)
         file.save(input_path)
 
         output_name = os.path.splitext(filename)[0] + ".docx"
-        output_path = os.path.join(OUTPUT_FOLDER, output_name)
+        output_path = os.path.join("/tmp", output_name)
 
-        # ✅ Convert using LibreOffice (Writer filter)
+        # ✅ LibreOffice proper writer-based PDF import
         cmd = [
             "libreoffice",
             "--headless",
             "--nologo",
+            "--infilter=writer_pdf_import",
             "--convert-to", "docx:MS Word 2007 XML",
-            "--outdir", OUTPUT_FOLDER,
+            "--outdir", "/tmp",
             input_path
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
-        print("STDOUT:", result.stdout)
-        print("STDERR:", result.stderr)
+        print("LibreOffice STDOUT:", result.stdout)
+        print("LibreOffice STDERR:", result.stderr)
 
-        if result.returncode != 0:
-            raise Exception("LibreOffice conversion failed")
+        # ✅ Explicit permission + verification
+        if not os.path.exists(output_path):
+            raise Exception("Output not generated — conversion failed.")
+        if os.path.getsize(output_path) < 2000:
+            raise Exception("Output corrupted or empty — likely Draw mode issue.")
 
-        if not os.path.exists(output_path) or os.path.getsize(output_path) < 2000:
-            raise Exception("Output file seems empty or corrupted")
+        os.chmod(output_path, 0o777)
 
         @after_this_request
         def cleanup(response):
