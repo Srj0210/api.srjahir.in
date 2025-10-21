@@ -9,4 +9,4 @@ pdf2docx==0.5.8
 pytesseract
 pdf2image
 PyMuPDF==1.23.8
-fitz==0.0.1.dev2
+reportlab
