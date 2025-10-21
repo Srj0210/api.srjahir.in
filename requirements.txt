@@ -5,3 +5,7 @@ fpdf2
 pillow
 python-docx
 gunicorn
+pdf2docx
+pytesseract
+pdf2image
+pymupdf
