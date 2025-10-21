@@ -107,7 +107,7 @@ def word_to_pdf():
 
 
 # ---------------------------
-# PDF → Word (Hybrid Professional Version)
+# PDF → Word (Enhanced Professional Layout)
 # ---------------------------
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
@@ -120,59 +120,50 @@ def pdf_to_word():
         input_path = os.path.join("/tmp", filename)
         file.save(input_path)
 
-        output_name = os.path.splitext(filename)[0] + ".docx"
-        output_path = os.path.join("/tmp", output_name)
+        base_name = os.path.splitext(filename)[0]
+        output_path = os.path.join("/tmp", f"{base_name}.docx")
 
-        # ✅ Step 1: Check if PDF is text-based or scanned (image-based)
-        text_check = subprocess.run(
-            ["pdftotext", input_path, "-"],
-            capture_output=True,
-            text=True
-        )
+        # ✅ Step 1: Detect PDF type
+        text_check = subprocess.run(["pdftotext", input_path, "-"], capture_output=True, text=True)
         is_text_pdf = len(text_check.stdout.strip()) > 30
 
-        # ✅ Step 2: Use proper conversion path
         if is_text_pdf:
-            print("🧾 Text-based PDF detected → using LibreOffice engine")
+            print("🧾 Text-based PDF detected → Using LibreOffice (docx mode)")
             cmd = [
-                "xvfb-run", "--auto-servernum",
-                "libreoffice", "--headless",
+                "libreoffice",
+                "--headless",
                 "--nologo",
-                "--infilter=writer_pdf_import",
+                "--nofirststartwizard",
                 "--convert-to", "docx:MS Word 2007 XML",
                 "--outdir", "/tmp",
                 input_path
             ]
             subprocess.run(cmd, check=True)
         else:
-            print("📸 Image-based PDF detected → using OCR engine (pdf2docx + Tesseract)")
+            print("📸 Image-based PDF detected → Using OCR (Tesseract + docx)")
             from PIL import Image
             import pytesseract
-            import fitz  # PyMuPDF
+            import fitz
             from docx import Document
 
             doc = fitz.open(input_path)
-            text_docx = []
-
-            for page_num in range(len(doc)):
-                page = doc.load_page(page_num)
+            document = Document()
+            for i, page in enumerate(doc):
                 pix = page.get_pixmap(dpi=300)
-                img_path = f"/tmp/page_{page_num}.png"
+                img_path = f"/tmp/page_{i}.png"
                 pix.save(img_path)
                 text = pytesseract.image_to_string(Image.open(img_path))
-                text_docx.append(text)
-
-            document = Document()
-            for content in text_docx:
-                document.add_paragraph(content)
+                document.add_paragraph(text)
             document.save(output_path)
 
-        # ✅ Validation
-        if not os.path.exists(output_path):
-            raise Exception("Output file not created")
+        # ✅ Step 2: Ensure modern DOCX output
+        if not output_path.endswith(".docx"):
+            new_path = os.path.splitext(output_path)[0] + ".docx"
+            os.rename(output_path, new_path)
+            output_path = new_path
 
-        if os.path.getsize(output_path) < 2000:
-            raise Exception("Conversion failed or empty file")
+        if not os.path.exists(output_path) or os.path.getsize(output_path) < 1000:
+            raise Exception("Output generation failed or empty file.")
 
         os.chmod(output_path, 0o777)
 
@@ -182,13 +173,13 @@ def pdf_to_word():
             safe_remove(output_path)
             return response
 
-        return send_file(output_path, as_attachment=True, download_name=output_name)
+        return send_file(output_path, as_attachment=True, download_name=f"{base_name}.docx")
 
     except subprocess.CalledProcessError as e:
-        print("❌ LibreOffice error:", e)
+        print("❌ LibreOffice conversion error:", e)
         return jsonify({"error": "LibreOffice conversion failed"}), 500
     except Exception as e:
-        print("❌ Hybrid PDF→Word Error:", e)
+        print("❌ Enhanced PDF→Word Error:", e)
         return jsonify({"error": str(e)}), 500
 
 
