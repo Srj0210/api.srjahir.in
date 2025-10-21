@@ -123,7 +123,7 @@ def word_to_pdf():
 
 
 # ---------------------------
-# PDF → Word (Hybrid Pro Engine v2, Fixed)
+# PDF → Word (Hybrid Layout Pro Engine)
 # ---------------------------
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
@@ -132,6 +132,7 @@ def pdf_to_word():
     from pdf2image import convert_from_path
     import pytesseract
     from docx import Document
+    import subprocess
 
     try:
         file = request.files.get("file")
@@ -145,42 +146,38 @@ def pdf_to_word():
         output_name = os.path.splitext(filename)[0] + ".docx"
         output_path = os.path.join("/tmp", output_name)
 
-        # STEP 1️⃣: Detect if PDF contains text (Safe version)
+        # Step 1️⃣: Detect if PDF has selectable text
         text_based = False
         try:
-            doc = fitz.open(input_path)
-            for page in doc:
-                extracted = page.get_text("text")
-                if extracted and extracted.strip():
-                    text_based = True
-                    break
-            doc.close()
+            with fitz.open(input_path) as pdf:
+                for page in pdf:
+                    text = page.get_text("text")
+                    if text and text.strip():
+                        text_based = True
+                        break
         except Exception as e:
             print("⚠️ Text detection failed:", e)
 
-        # STEP 2️⃣: Use pdf2docx for text PDFs
+        # Step 2️⃣: If text-based → use pdf2docx (preserves layout)
         if text_based:
-            print("🧩 Text-based PDF detected — using pdf2docx engine.")
+            print("🧠 Text-based PDF detected — using pdf2docx engine.")
             cv = Converter(input_path)
             cv.convert(output_path, start=0, end=None)
             cv.close()
 
-        # STEP 3️⃣: Fallback OCR for image PDFs
+        # Step 3️⃣: Else → fallback LibreOffice (image/vector layout fix)
         else:
-            print("🧠 Image-based PDF detected — using OCR fallback.")
-            images = convert_from_path(input_path, dpi=200)
-            document = Document()
+            print("🖼️ Image/Graphic PDF detected — using LibreOffice fallback.")
+            subprocess.run([
+                "libreoffice", "--headless", "--nologo",
+                "--infilter=writer_pdf_import",
+                "--convert-to", "docx:MS Word 2007 XML",
+                "--outdir", "/tmp",
+                input_path
+            ], check=True)
 
-            for page_num, img in enumerate(images, start=1):
-                text = pytesseract.image_to_string(img)
-                document.add_paragraph(f"--- Page {page_num} ---")
-                document.add_paragraph(text.strip() if text.strip() else "[No text found]")
-                document.add_page_break()
-
-            document.save(output_path)
-
-        # STEP 4️⃣: Verify output
-        if not os.path.exists(output_path) or os.path.getsize(output_path) < 2000:
+        # Step 4️⃣: Verify & send file
+        if not os.path.exists(output_path) or os.path.getsize(output_path) < 1000:
             raise Exception("Output file empty or corrupted.")
 
         os.chmod(output_path, 0o777)
