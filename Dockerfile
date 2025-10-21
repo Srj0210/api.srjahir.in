@@ -27,12 +27,10 @@ RUN apt-get update && apt-get install -y \
     fonts-dejavu-core \
     fonts-dejavu-extra \
     fonts-noto-core \
-    fonts-noto-sans \
-    fonts-noto-serif \
     fonts-noto-mono \
     fonts-noto-color-emoji \
-    fonts-roboto \
     fonts-liberation \
+    fonts-roboto-unhinted \
     locales \
     && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
