@@ -6,12 +6,14 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 ENV HOME=/tmp
-# ✅ Improve LibreOffice rendering quality
 ENV SAL_USE_VCLPLUGIN=gen
 ENV SAL_VCL_QT5_NO_GLYPH_HINTING=1
 
+# ✅ Use alternate Debian mirror for reliability
+RUN sed -i 's|deb.debian.org|deb.debian.org|g; s|security.debian.org|deb.debian.org|g' /etc/apt/sources.list
+
 # ✅ Install system dependencies: LibreOffice + OCR + Fonts + Utilities
-RUN apt-get update && apt-get install -y \
+RUN apt-get update --fix-missing && apt-get install -y \
     libreoffice \
     libreoffice-writer \
     libreoffice-draw \
@@ -41,7 +43,7 @@ WORKDIR /app
 # ✅ Copy project files
 COPY . /app
 
-# ✅ Install Python dependencies (all required libs)
+# ✅ Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # ✅ Create required directories & set permissions
