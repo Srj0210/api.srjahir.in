@@ -89,7 +89,7 @@ def word_to_pdf():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# -------------------- PDF → Word (Layout Accurate + OCR fallback) --------------------
+# -------------------- PDF → Word (Layout Accurate, Fixed Filter Syntax) --------------------
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
     try:
@@ -100,34 +100,23 @@ def pdf_to_word():
         filename = secure_filename(file.filename)
         input_path = os.path.join("/tmp", filename)
         file.save(input_path)
+
         base_name = os.path.splitext(filename)[0]
         output_path = os.path.join("/tmp", f"{base_name}.docx")
 
+        # Detect text-based or image PDF
         text_check = subprocess.run(["pdftotext", input_path, "-"], capture_output=True, text=True)
         is_text_pdf = len(text_check.stdout.strip()) > 30
 
         if is_text_pdf:
-            print("🧾 Text-based PDF detected → Using LibreOffice Writer Import")
+            print("🧾 Text-based PDF → LibreOffice Writer (Safe mode)")
             subprocess.run([
                 "xvfb-run", "--auto-servernum", "--server-args=-screen 0 1024x768x24",
                 "libreoffice", "--headless", "--nologo", "--nofirststartwizard",
-                "--infilter=writer_pdf_import",
-                "--convert-to", "docx:\"MS Word 2007 XML\"",
-                "--outdir", "/tmp",
-                input_path
+                "--convert-to", "docx", "--outdir", "/tmp", input_path
             ], check=True)
-
-            # Fix: Convert any .doc output to .docx again (remove read-only tag)
-            temp_doc = os.path.join("/tmp", f"{base_name}.doc")
-            if os.path.exists(temp_doc) and not os.path.exists(output_path):
-                subprocess.run([
-                    "libreoffice", "--headless", "--convert-to", "docx:\"MS Word 2007 XML\"",
-                    "--outdir", "/tmp", temp_doc
-                ], check=True)
-                safe_remove(temp_doc)
-
         else:
-            print("📸 Image-based PDF detected → Using OCR (pytesseract + docx)")
+            print("📸 Image-based PDF → OCR mode (Tesseract + DOCX)")
             from PIL import Image
             import pytesseract
             import fitz
@@ -144,21 +133,28 @@ def pdf_to_word():
                     doc.add_paragraph(text)
             doc.save(output_path)
 
-        if not os.path.exists(output_path) or os.path.getsize(output_path) < 2000:
-            raise Exception("Output generation failed or empty file.")
+        # LibreOffice fix: ensure .docx created and readable
+        final_docx = os.path.join("/tmp", f"{base_name}.docx")
+        if not os.path.exists(final_docx):
+            for f in os.listdir("/tmp"):
+                if f.lower().endswith(".docx"):
+                    final_docx = os.path.join("/tmp", f)
 
-        os.chmod(output_path, 0o777)
+        if not os.path.exists(final_docx) or os.path.getsize(final_docx) < 1500:
+            raise Exception("Output generation failed or empty")
+
+        os.chmod(final_docx, 0o777)
 
         @after_this_request
         def cleanup(response):
             safe_remove(input_path)
-            safe_remove(output_path)
+            safe_remove(final_docx)
             return response
 
-        return send_file(output_path, as_attachment=True, download_name=f"{base_name}.docx")
+        return send_file(final_docx, as_attachment=True, download_name=f"{base_name}.docx")
 
     except subprocess.CalledProcessError as e:
-        print("❌ LibreOffice PDF→Word conversion failed:", e)
+        print("❌ LibreOffice failed:", e)
         return jsonify({"error": "LibreOffice conversion failed"}), 500
     except Exception as e:
         print("❌ PDF→Word Error:", e)
