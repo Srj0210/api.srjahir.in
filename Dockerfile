@@ -8,14 +8,17 @@ ENV LC_ALL=en_US.UTF-8
 ENV HOME=/tmp
 ENV SAL_USE_VCLPLUGIN=gen
 ENV SAL_VCL_QT5_NO_GLYPH_HINTING=1
+ENV DISPLAY=:99
+ENV LIBREOFFICE_HEADLESS=true
 
 # ✅ Fix missing sources.list (Render issue)
 RUN echo "deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware\n\
 deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware\n\
 deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware" > /etc/apt/sources.list
 
-# ✅ Install system dependencies: LibreOffice + OCR + Fonts + Utilities
+# ✅ Install System Dependencies: LibreOffice + OCR + Fonts + Utilities + Virtual Display
 RUN apt-get update --fix-missing && apt-get install -y \
+    xvfb \
     libreoffice \
     libreoffice-writer \
     libreoffice-draw \
@@ -40,26 +43,28 @@ RUN apt-get update --fix-missing && apt-get install -y \
     && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# ✅ Fix for LibreOffice X11 display error in Render
-ENV DISPLAY=:99
-RUN apt-get update && apt-get install -y xvfb && apt-get clean
-
-# ✅ Set working directory
+# ✅ Set Working Directory
 WORKDIR /app
 
-# ✅ Copy project files
+# ✅ Copy Project Files
 COPY . /app
 
-# ✅ Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt pdf2docx pytesseract pillow
+# ✅ Install Python Dependencies
+RUN pip install --no-cache-dir -r requirements.txt \
+    pdf2docx==0.5.8 \
+    pytesseract \
+    pillow \
+    PyMuPDF==1.23.8 \
+    fitz==0.0.1.dev2 \
+    gunicorn
 
-# ✅ Create required directories & set permissions
+# ✅ Create Required Directories & Set Permissions
 RUN mkdir -p /tmp/uploads /tmp/outputs /tmp/.config && chmod -R 777 /app /tmp
 
-# ✅ Verify LibreOffice installation (with virtual framebuffer)
+# ✅ Verify LibreOffice Installation (Virtual Display)
 RUN xvfb-run --auto-servernum libreoffice --headless --version || echo "LibreOffice ready"
 
-# ✅ Expose API port
+# ✅ Expose API Port
 EXPOSE 10000
 ENV PORT=10000
 
