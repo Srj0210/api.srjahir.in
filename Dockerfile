@@ -28,6 +28,7 @@ RUN apt-get update --fix-missing && apt-get install -y \
     default-jre \
     poppler-utils \
     tesseract-ocr \
+    ghostscript \
     fonts-dejavu-core \
     fonts-dejavu-extra \
     fonts-noto-core \
@@ -50,7 +51,7 @@ WORKDIR /app
 COPY . /app
 
 # ✅ Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt pdf2docx pytesseract pillow
 
 # ✅ Create required directories & set permissions
 RUN mkdir -p /tmp/uploads /tmp/outputs /tmp/.config && chmod -R 777 /app /tmp
