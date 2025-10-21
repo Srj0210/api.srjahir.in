@@ -123,7 +123,7 @@ def word_to_pdf():
 
 
 # ---------------------------
-# PDF → Word (Hybrid Pro Engine v2)
+# PDF → Word (Hybrid Pro Engine v2, Fixed)
 # ---------------------------
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
@@ -145,27 +145,29 @@ def pdf_to_word():
         output_name = os.path.splitext(filename)[0] + ".docx"
         output_path = os.path.join("/tmp", output_name)
 
-        # STEP 1️⃣: Detect if PDF contains text
+        # STEP 1️⃣: Detect if PDF contains text (Safe version)
         text_based = False
         try:
             doc = fitz.open(input_path)
             for page in doc:
-                if page.get_text("text").strip():
+                extracted = page.get_text("text")
+                if extracted and extracted.strip():
                     text_based = True
                     break
             doc.close()
         except Exception as e:
             print("⚠️ Text detection failed:", e)
 
-        # STEP 2️⃣: If text-based → pdf2docx (accurate layout)
+        # STEP 2️⃣: Use pdf2docx for text PDFs
         if text_based:
             print("🧩 Text-based PDF detected — using pdf2docx engine.")
             cv = Converter(input_path)
             cv.convert(output_path, start=0, end=None)
             cv.close()
+
+        # STEP 3️⃣: Fallback OCR for image PDFs
         else:
             print("🧠 Image-based PDF detected — using OCR fallback.")
-            # Convert PDF pages to images
             images = convert_from_path(input_path, dpi=200)
             document = Document()
 
@@ -177,7 +179,7 @@ def pdf_to_word():
 
             document.save(output_path)
 
-        # STEP 3️⃣: Verify & Send File
+        # STEP 4️⃣: Verify output
         if not os.path.exists(output_path) or os.path.getsize(output_path) < 2000:
             raise Exception("Output file empty or corrupted.")
 
