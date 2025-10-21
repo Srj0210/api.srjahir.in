@@ -16,7 +16,7 @@ RUN echo "deb http://deb.debian.org/debian bookworm main contrib non-free non-fr
 deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware\n\
 deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware" > /etc/apt/sources.list
 
-# ✅ Install System Dependencies: LibreOffice + OCR + Fonts + Utilities + Virtual Display
+# ✅ Install System Dependencies
 RUN apt-get update --fix-missing && apt-get install -y \
     xvfb \
     libreoffice \
@@ -61,8 +61,8 @@ RUN pip install --no-cache-dir -r requirements.txt \
 # ✅ Create Required Directories & Set Permissions
 RUN mkdir -p /tmp/uploads /tmp/outputs /tmp/.config && chmod -R 777 /app /tmp
 
-# ✅ Verify LibreOffice Installation (Virtual Display)
-RUN xvfb-run --auto-servernum libreoffice --headless --version || echo "LibreOffice ready"
+# ✅ Verify LibreOffice Installation (Headless)
+RUN xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24" libreoffice --headless --version || echo "LibreOffice ready"
 
 # ✅ Expose API Port
 EXPOSE 10000
