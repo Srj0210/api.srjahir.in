@@ -5,7 +5,7 @@ import threading
 from flask import Flask, request, send_file, jsonify, after_this_request
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
-from PyPDF2 import PdfMerger, PdfReader, PdfWriter
+from PyPDF2 import PdfReader, PdfWriter
 from fpdf import FPDF
 
 app = Flask(__name__)
@@ -36,7 +36,7 @@ def cleanup_files(paths, delay=5):
 
 
 def parse_pages_spec(spec: str, total_pages: int):
-    """Parse user-supplied pages spec like 1,3,5-7 or 5689"""
+    """Parse user-supplied pages spec like 1,3,5-7"""
     if not spec:
         return []
     spec = spec.strip()
@@ -61,25 +61,9 @@ def parse_pages_spec(spec: str, total_pages: int):
                 except:
                     continue
     else:
-        if spec.isdigit():
-            if len(spec) <= 4:
-                try:
-                    full = int(spec)
-                    if 1 <= full <= total_pages:
-                        pages.add(full)
-                    else:
-                        for ch in spec:
-                            pages.add(int(ch))
-                except:
-                    for ch in spec:
-                        pages.add(int(ch))
-            else:
-                for ch in spec:
-                    pages.add(int(ch))
-        else:
-            found = re.findall(r"\d+", spec)
-            for f in found:
-                pages.add(int(f))
+        found = re.findall(r"\d+", spec)
+        for f in found:
+            pages.add(int(f))
 
     return sorted([p for p in pages if 1 <= p <= total_pages])
 
@@ -122,17 +106,90 @@ def word_to_pdf():
         return jsonify({"error": str(e)}), 500
 
 
-flask
-flask-cors
-pypdf2
-fpdf2
-pillow
-python-docx
-gunicorn
-pdf2docx==0.5.8
-pytesseract
-pdf2image
-PyMuPDF==1.23.8
+# ---------------------------
+# PDF → Word (Hybrid Professional Version)
+# ---------------------------
+@app.route("/pdf-to-word", methods=["POST"])
+def pdf_to_word():
+    try:
+        file = request.files.get("file")
+        if not file:
+            return jsonify({"error": "No file uploaded"}), 400
+
+        filename = secure_filename(file.filename)
+        input_path = os.path.join("/tmp", filename)
+        file.save(input_path)
+
+        output_name = os.path.splitext(filename)[0] + ".docx"
+        output_path = os.path.join("/tmp", output_name)
+
+        # ✅ Step 1: Check if PDF is text-based or scanned (image-based)
+        text_check = subprocess.run(
+            ["pdftotext", input_path, "-"],
+            capture_output=True,
+            text=True
+        )
+        is_text_pdf = len(text_check.stdout.strip()) > 30
+
+        # ✅ Step 2: Use proper conversion path
+        if is_text_pdf:
+            print("🧾 Text-based PDF detected → using LibreOffice engine")
+            cmd = [
+                "xvfb-run", "--auto-servernum",
+                "libreoffice", "--headless",
+                "--nologo",
+                "--infilter=writer_pdf_import",
+                "--convert-to", "docx:MS Word 2007 XML",
+                "--outdir", "/tmp",
+                input_path
+            ]
+            subprocess.run(cmd, check=True)
+        else:
+            print("📸 Image-based PDF detected → using OCR engine (pdf2docx + Tesseract)")
+            from PIL import Image
+            import pytesseract
+            import fitz  # PyMuPDF
+            from docx import Document
+
+            doc = fitz.open(input_path)
+            text_docx = []
+
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                pix = page.get_pixmap(dpi=300)
+                img_path = f"/tmp/page_{page_num}.png"
+                pix.save(img_path)
+                text = pytesseract.image_to_string(Image.open(img_path))
+                text_docx.append(text)
+
+            document = Document()
+            for content in text_docx:
+                document.add_paragraph(content)
+            document.save(output_path)
+
+        # ✅ Validation
+        if not os.path.exists(output_path):
+            raise Exception("Output file not created")
+
+        if os.path.getsize(output_path) < 2000:
+            raise Exception("Conversion failed or empty file")
+
+        os.chmod(output_path, 0o777)
+
+        @after_this_request
+        def cleanup(response):
+            safe_remove(input_path)
+            safe_remove(output_path)
+            return response
+
+        return send_file(output_path, as_attachment=True, download_name=output_name)
+
+    except subprocess.CalledProcessError as e:
+        print("❌ LibreOffice error:", e)
+        return jsonify({"error": "LibreOffice conversion failed"}), 500
+    except Exception as e:
+        print("❌ Hybrid PDF→Word Error:", e)
+        return jsonify({"error": str(e)}), 500
 
 
 # ---------------------------
@@ -153,13 +210,8 @@ def split_pdf():
         reader = PdfReader(input_path)
         total_pages = len(reader.pages)
 
-        if not pages_spec:
-            selected = list(range(1, total_pages + 1))
-        else:
-            selected = parse_pages_spec(pages_spec, total_pages)
-
+        selected = parse_pages_spec(pages_spec, total_pages) if pages_spec else list(range(1, total_pages + 1))
         if not selected:
-            safe_remove(input_path)
             return jsonify({"error": "No valid pages selected"}), 400
 
         writer = PdfWriter()
