@@ -6,6 +6,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 ENV HOME=/tmp
+# ✅ Improve LibreOffice rendering quality
+ENV SAL_USE_VCLPLUGIN=gen
+ENV SAL_VCL_QT5_NO_GLYPH_HINTING=1
 
 # ✅ Install system dependencies: LibreOffice + OCR + Fonts + Utilities
 RUN apt-get update && apt-get install -y \
@@ -24,8 +27,11 @@ RUN apt-get update && apt-get install -y \
     fonts-dejavu-core \
     fonts-dejavu-extra \
     fonts-noto-core \
+    fonts-noto-sans \
+    fonts-noto-serif \
     fonts-noto-mono \
     fonts-noto-color-emoji \
+    fonts-roboto \
     fonts-liberation \
     locales \
     && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen \
