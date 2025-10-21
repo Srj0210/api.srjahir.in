@@ -123,10 +123,16 @@ def word_to_pdf():
 
 
 # ---------------------------
-# PDF → Word (Stable Professional Fix)
+# PDF → Word (Hybrid Pro Engine v2)
 # ---------------------------
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
+    import fitz  # PyMuPDF
+    from pdf2docx import Converter
+    from pdf2image import convert_from_path
+    import pytesseract
+    from docx import Document
+
     try:
         file = request.files.get("file")
         if not file:
@@ -139,25 +145,41 @@ def pdf_to_word():
         output_name = os.path.splitext(filename)[0] + ".docx"
         output_path = os.path.join("/tmp", output_name)
 
-        # ✅ LibreOffice proper writer-based PDF import
-        cmd = [
-            "libreoffice",
-            "--headless",
-            "--nologo",
-            "--infilter=writer_pdf_import",
-            "--convert-to", "docx:MS Word 2007 XML",
-            "--outdir", "/tmp",
-            input_path
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        print("LibreOffice STDOUT:", result.stdout)
-        print("LibreOffice STDERR:", result.stderr)
+        # STEP 1️⃣: Detect if PDF contains text
+        text_based = False
+        try:
+            doc = fitz.open(input_path)
+            for page in doc:
+                if page.get_text("text").strip():
+                    text_based = True
+                    break
+            doc.close()
+        except Exception as e:
+            print("⚠️ Text detection failed:", e)
 
-        # ✅ Explicit permission + verification
-        if not os.path.exists(output_path):
-            raise Exception("Output not generated — conversion failed.")
-        if os.path.getsize(output_path) < 2000:
-            raise Exception("Output corrupted or empty — likely Draw mode issue.")
+        # STEP 2️⃣: If text-based → pdf2docx (accurate layout)
+        if text_based:
+            print("🧩 Text-based PDF detected — using pdf2docx engine.")
+            cv = Converter(input_path)
+            cv.convert(output_path, start=0, end=None)
+            cv.close()
+        else:
+            print("🧠 Image-based PDF detected — using OCR fallback.")
+            # Convert PDF pages to images
+            images = convert_from_path(input_path, dpi=200)
+            document = Document()
+
+            for page_num, img in enumerate(images, start=1):
+                text = pytesseract.image_to_string(img)
+                document.add_paragraph(f"--- Page {page_num} ---")
+                document.add_paragraph(text.strip() if text.strip() else "[No text found]")
+                document.add_page_break()
+
+            document.save(output_path)
+
+        # STEP 3️⃣: Verify & Send File
+        if not os.path.exists(output_path) or os.path.getsize(output_path) < 2000:
+            raise Exception("Output file empty or corrupted.")
 
         os.chmod(output_path, 0o777)
 
@@ -170,7 +192,7 @@ def pdf_to_word():
         return send_file(output_path, as_attachment=True, download_name=output_name)
 
     except Exception as e:
-        print(f"❌ PDF→Word Error: {e}")
+        print(f"❌ PDF→Word Hybrid Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 
