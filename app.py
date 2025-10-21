@@ -89,7 +89,9 @@ def word_to_pdf():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# -------------------- PDF → Word (Hybrid Mode) --------------------
+# ---------------------------
+# PDF → Word (Hybrid Professional Layout with Writer Import)
+# ---------------------------
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
     try:
@@ -97,41 +99,55 @@ def pdf_to_word():
         if not file:
             return jsonify({"error": "No file uploaded"}), 400
 
+        # Save input PDF
         filename = secure_filename(file.filename)
         input_path = os.path.join("/tmp", filename)
         file.save(input_path)
-        output_path = os.path.join("/tmp", os.path.splitext(filename)[0] + ".docx")
 
-        text_check = subprocess.run(["pdftotext", input_path, "-"], capture_output=True, text=True)
+        base_name = os.path.splitext(filename)[0]
+        output_path = os.path.join("/tmp", f"{base_name}.docx")
+
+        # ✅ Step 1: Detect if PDF is text-based or scanned
+        text_check = subprocess.run(
+            ["pdftotext", input_path, "-"],
+            capture_output=True,
+            text=True
+        )
         is_text_pdf = len(text_check.stdout.strip()) > 30
 
+        # ✅ Step 2: Choose conversion method
         if is_text_pdf:
-            print("🧾 Text-based PDF detected → Using LibreOffice engine")
-            subprocess.run([
+            print("🧾 Text-based PDF detected → Using LibreOffice Writer Import")
+            cmd = [
                 "xvfb-run", "--auto-servernum", "--server-args=-screen 0 1024x768x24",
-                "libreoffice", "--headless", "--nologo", "--invisible",
+                "libreoffice", "--headless", "--nologo", "--nofirststartwizard",
+                "--infilter=writer_pdf_import",
                 "--convert-to", "docx:MS Word 2007 XML",
-                "--outdir", "/tmp", input_path
-            ], check=True)
+                "--outdir", "/tmp",
+                input_path
+            ]
+            subprocess.run(cmd, check=True)
         else:
-            print("📸 Image-based PDF detected → Using OCR engine (pytesseract)")
+            print("📸 Image-based PDF detected → Using OCR (pytesseract + docx)")
             from PIL import Image
             import pytesseract
             import fitz
             from docx import Document
 
             pdf_doc = fitz.open(input_path)
-            docx_out = Document()
+            doc = Document()
             for i, page in enumerate(pdf_doc):
                 pix = page.get_pixmap(dpi=300)
                 img_path = f"/tmp/page_{i}.png"
                 pix.save(img_path)
                 text = pytesseract.image_to_string(Image.open(img_path))
-                docx_out.add_paragraph(text)
-            docx_out.save(output_path)
+                doc.add_paragraph(text)
+            doc.save(output_path)
 
+        # ✅ Step 3: Validate output
         if not os.path.exists(output_path) or os.path.getsize(output_path) < 2000:
-            raise Exception("Output not generated or too small.")
+            raise Exception("Output generation failed or empty file.")
+
         os.chmod(output_path, 0o777)
 
         @after_this_request
@@ -140,12 +156,13 @@ def pdf_to_word():
             safe_remove(output_path)
             return response
 
-        return send_file(output_path, as_attachment=True, download_name=os.path.basename(output_path))
+        return send_file(output_path, as_attachment=True, download_name=f"{base_name}.docx")
 
-    except subprocess.CalledProcessError:
-        return jsonify({"error": "LibreOffice PDF→Word conversion failed"}), 500
+    except subprocess.CalledProcessError as e:
+        print("❌ LibreOffice PDF→Word conversion failed:", e)
+        return jsonify({"error": "LibreOffice conversion failed"}), 500
     except Exception as e:
-        print("❌ PDF→Word Hybrid Error:", e)
+        print("❌ PDF→Word Error:", e)
         return jsonify({"error": str(e)}), 500
 
 # -------------------- Split PDF --------------------
