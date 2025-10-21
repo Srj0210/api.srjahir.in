@@ -9,8 +9,10 @@ ENV HOME=/tmp
 ENV SAL_USE_VCLPLUGIN=gen
 ENV SAL_VCL_QT5_NO_GLYPH_HINTING=1
 
-# ✅ Use alternate Debian mirror for reliability
-RUN sed -i 's|deb.debian.org|deb.debian.org|g; s|security.debian.org|deb.debian.org|g' /etc/apt/sources.list
+# ✅ Fix missing sources.list (Render issue)
+RUN echo "deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware\n\
+deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware\n\
+deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware" > /etc/apt/sources.list
 
 # ✅ Install system dependencies: LibreOffice + OCR + Fonts + Utilities
 RUN apt-get update --fix-missing && apt-get install -y \
@@ -50,11 +52,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN mkdir -p /tmp/uploads /tmp/outputs /tmp/.config && chmod -R 777 /app /tmp
 
 # ✅ Verify LibreOffice installation
-RUN libreoffice --headless --version || echo "LibreOffice ready"
-
-# ✅ Expose API port
-EXPOSE 10000
-ENV PORT=10000
-
-# ✅ Start Gunicorn Server
-CMD exec gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 180
+RUN libreoffice --headless
