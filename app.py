@@ -89,9 +89,7 @@ def word_to_pdf():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ---------------------------
-# PDF → Word (Hybrid Professional Layout with Writer Import)
-# ---------------------------
+# -------------------- PDF → Word (Layout Accurate + OCR fallback) --------------------
 @app.route("/pdf-to-word", methods=["POST"])
 def pdf_to_word():
     try:
@@ -99,34 +97,35 @@ def pdf_to_word():
         if not file:
             return jsonify({"error": "No file uploaded"}), 400
 
-        # Save input PDF
         filename = secure_filename(file.filename)
         input_path = os.path.join("/tmp", filename)
         file.save(input_path)
-
         base_name = os.path.splitext(filename)[0]
         output_path = os.path.join("/tmp", f"{base_name}.docx")
 
-        # ✅ Step 1: Detect if PDF is text-based or scanned
-        text_check = subprocess.run(
-            ["pdftotext", input_path, "-"],
-            capture_output=True,
-            text=True
-        )
+        text_check = subprocess.run(["pdftotext", input_path, "-"], capture_output=True, text=True)
         is_text_pdf = len(text_check.stdout.strip()) > 30
 
-        # ✅ Step 2: Choose conversion method
         if is_text_pdf:
             print("🧾 Text-based PDF detected → Using LibreOffice Writer Import")
-            cmd = [
+            subprocess.run([
                 "xvfb-run", "--auto-servernum", "--server-args=-screen 0 1024x768x24",
                 "libreoffice", "--headless", "--nologo", "--nofirststartwizard",
                 "--infilter=writer_pdf_import",
-                "--convert-to", "docx:MS Word 2007 XML",
+                "--convert-to", "docx:\"MS Word 2007 XML\"",
                 "--outdir", "/tmp",
                 input_path
-            ]
-            subprocess.run(cmd, check=True)
+            ], check=True)
+
+            # Fix: Convert any .doc output to .docx again (remove read-only tag)
+            temp_doc = os.path.join("/tmp", f"{base_name}.doc")
+            if os.path.exists(temp_doc) and not os.path.exists(output_path):
+                subprocess.run([
+                    "libreoffice", "--headless", "--convert-to", "docx:\"MS Word 2007 XML\"",
+                    "--outdir", "/tmp", temp_doc
+                ], check=True)
+                safe_remove(temp_doc)
+
         else:
             print("📸 Image-based PDF detected → Using OCR (pytesseract + docx)")
             from PIL import Image
@@ -141,10 +140,10 @@ def pdf_to_word():
                 img_path = f"/tmp/page_{i}.png"
                 pix.save(img_path)
                 text = pytesseract.image_to_string(Image.open(img_path))
-                doc.add_paragraph(text)
+                if text.strip():
+                    doc.add_paragraph(text)
             doc.save(output_path)
 
-        # ✅ Step 3: Validate output
         if not os.path.exists(output_path) or os.path.getsize(output_path) < 2000:
             raise Exception("Output generation failed or empty file.")
 
