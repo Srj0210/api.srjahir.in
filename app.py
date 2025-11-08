@@ -2,9 +2,11 @@ import os
 from flask import Flask, request, jsonify, send_file, after_this_request
 from werkzeug.utils import secure_filename
 from tools.word_to_pdf import word_to_pdf
+from flask_cors import CORS
 import tempfile, shutil
 
 app = Flask(__name__)
+CORS(app)  # ✅ Enable cross-origin for frontend (tools.srjahir.in)
 
 UPLOAD_FOLDER = "/tmp/uploads"
 OUTPUT_FOLDER = "/tmp/outputs"
@@ -33,6 +35,7 @@ def convert_word_to_pdf():
         output_filename = f"{original_name}.pdf"
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
 
+        # Convert DOCX → PDF
         word_to_pdf(input_path, output_path)
 
         @after_this_request
