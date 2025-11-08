@@ -1,12 +1,2 @@
-flask
-flask-cors
-pypdf2
-fpdf2
-pillow
-python-docx
-gunicorn
-pdf2docx==0.5.8
-pytesseract
-pdf2image
-PyMuPDF==1.23.8
-reportlab
+Flask==3.0.3
+gunicorn==22.0.0
