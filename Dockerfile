@@ -3,9 +3,9 @@ FROM python:3.11-slim
 WORKDIR /app
 COPY . /app
 
-# ===== Install System Tools =====
+# ===== Install System Tools (No unoconv) =====
 RUN apt-get update && apt-get install -y \
-    libreoffice-writer unoconv poppler-utils fonts-dejavu fonts-liberation \
+    libreoffice-writer poppler-utils fonts-dejavu fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 # ===== Python Dependencies =====
