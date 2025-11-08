@@ -51,5 +51,38 @@ def convert_word_to_pdf():
         return jsonify({"error": str(e)}), 500
 
 
+
+
+
+@app.route("/pdf-to-word", methods=["POST"])
+def convert_pdf_to_word():
+    try:
+        file = request.files.get("file")
+        if not file:
+            return jsonify({"error": "No file uploaded"}), 400
+
+        original_name = os.path.splitext(secure_filename(file.filename))[0]
+        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        file.save(input_path)
+
+        output_filename = f"{original_name}.docx"
+        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+
+        from tools.pdf_to_word import pdf_to_word
+        pdf_to_word(input_path, output_path)
+
+        @after_this_request
+        def cleanup(response):
+            for p in (input_path, output_path):
+                if os.path.exists(p):
+                    os.remove(p)
+            return response
+
+        return send_file(output_path, as_attachment=True, download_name=output_filename)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
