@@ -3,7 +3,7 @@ import subprocess, tempfile, shutil, os
 def word_to_pdf(input_docx_path, output_pdf_path):
     """
     Convert Word (.doc / .docx) to PDF using LibreOffice.
-    Works inside Render Linux with headless mode.
+    Works in Render Linux environment with headless mode.
     """
     try:
         temp_dir = tempfile.mkdtemp(dir="/tmp")
