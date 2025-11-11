@@ -20,7 +20,7 @@ def merge_pdf(input_files, output_path):
         merger.write(output_path)
         merger.close()
 
-        # Cleanup temp directory after merging
+        # Cleanup temporary files after merge
         for path in saved_paths:
             if os.path.exists(path):
                 os.remove(path)
