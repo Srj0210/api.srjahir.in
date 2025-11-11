@@ -1,26 +1,38 @@
 import os
+import tempfile
+import shutil
 from flask import Flask, request, jsonify, send_file, after_this_request
 from werkzeug.utils import secure_filename
-from tools.word_to_pdf import word_to_pdf
 from flask_cors import CORS
-import tempfile, shutil
 
+# === Import conversion tools ===
+from tools.word_to_pdf import word_to_pdf
+from tools.pdf_to_word import pdf_to_word
+from tools.merge_pdf import merge_pdf  # ✅ New added import
+
+# === Flask Setup ===
 app = Flask(__name__)
-CORS(app)  # ✅ Enable cross-origin for frontend (tools.srjahir.in)
+CORS(app)  # Enable CORS for frontend (tools.srjahir.in)
 
 UPLOAD_FOLDER = "/tmp/uploads"
 OUTPUT_FOLDER = "/tmp/outputs"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
+# === Root Route ===
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
         "message": "SRJ Tools API is Live 🚀",
         "status": "ok",
-        "routes": ["/word-to-pdf"]
+        "routes": [
+            "/word-to-pdf",
+            "/pdf-to-word",
+            "/merge-pdf"
+        ]
     })
 
+# === Word → PDF ===
 @app.route("/word-to-pdf", methods=["POST"])
 def convert_word_to_pdf():
     try:
@@ -50,10 +62,7 @@ def convert_word_to_pdf():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-
-
-
+# === PDF → Word ===
 @app.route("/pdf-to-word", methods=["POST"])
 def convert_pdf_to_word():
     try:
@@ -68,7 +77,6 @@ def convert_pdf_to_word():
         output_filename = f"{original_name}.docx"
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
 
-        from tools.pdf_to_word import pdf_to_word
         pdf_to_word(input_path, output_path)
 
         @after_this_request
@@ -83,6 +91,34 @@ def convert_pdf_to_word():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# === Merge Multiple PDFs ===
+@app.route("/merge-pdf", methods=["POST"])
+def merge_pdfs():
+    try:
+        files = request.files.getlist("files")
+        if not files or len(files) < 2:
+            return jsonify({"error": "Please upload at least two PDF files"}), 400
 
+        temp_dir = tempfile.mkdtemp(dir="/tmp")
+        output_path = os.path.join(temp_dir, "merged_output.pdf")
+
+        # ✅ Call function from tools/merge_pdf.py
+        merge_pdf(files, output_path)
+
+        @after_this_request
+        def cleanup(response):
+            if os.path.exists(output_path):
+                os.remove(output_path)
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            return response
+
+        return send_file(output_path, as_attachment=True, download_name="Merged_File.pdf")
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# === Run App ===
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
