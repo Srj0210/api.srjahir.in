@@ -119,6 +119,37 @@ def merge_pdfs():
         return jsonify({"error": str(e)}), 500
 
 
+
+
+
+
+
+
+from tools.split_pdf import split_selected_pages
+
+@app.route("/split-pdf", methods=["POST"])
+def split_pdf_api():
+    try:
+        file = request.files.get("file")
+        pages = request.form.get("pages")
+        if not file or not pages:
+            return jsonify({"error": "Missing file or pages"}), 400
+
+        selected_pages = [int(p) for p in pages.split(",") if p.strip().isdigit()]
+
+        filename = os.path.splitext(secure_filename(file.filename))[0]
+        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        output_path = os.path.join(OUTPUT_FOLDER, f"{filename}_split.pdf")
+        file.save(input_path)
+
+        split_selected_pages(input_path, output_path, selected_pages)
+
+        return send_file(output_path, as_attachment=True, download_name=f"{filename}_split.pdf")
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # === Run App ===
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
