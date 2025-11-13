@@ -3,13 +3,16 @@ FROM python:3.11-slim
 WORKDIR /app
 COPY . /app
 
-# ===== Install System Tools (Added ghostscript ONLY) =====
+# ===== Install System Tools (Full PDF Suite) =====
 RUN apt-get update && apt-get install -y \
     libreoffice-writer \
+    libreoffice-calc \
     poppler-utils \
+    ghostscript \
     fonts-dejavu \
     fonts-liberation \
-    ghostscript \
+    tesseract-ocr \
+    tesseract-ocr-eng \
     libcairo2 \
     && rm -rf /var/lib/apt/lists/*
 
