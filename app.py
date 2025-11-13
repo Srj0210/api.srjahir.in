@@ -12,17 +12,6 @@ from tools.merge_pdf import merge_pdf
 from tools.split_pdf import split_selected_pages
 from tools.remove_pages import remove_pages
 from tools.organize_pdf import organize_pdf
-from tools.compress_pdf import compress_pdf
-
-
-
-
-
-
-
-
-
-
 
 
 # === Flask Setup ===
@@ -235,35 +224,59 @@ def organize_pdf_route():
 
 
 
-
 @app.route("/compress-pdf", methods=["POST"])
-def compress_pdf_api():
+def compress_pdf():
+    import subprocess
+    import pikepdf
+    from io import BytesIO
+    from flask import send_file, request
+
+    if "file" not in request.files:
+        return {"error": "No file uploaded"}, 400
+
+    file = request.files["file"]
+    level = request.form.get("level", "balanced")
+
+    input_path = f"/tmp/input_{file.filename}"
+    output_path = f"/tmp/output_{file.filename}"
+
+    file.save(input_path)
+
+    # Ghostscript quality levels
+    quality_options = {
+        "high": "/screen",        # smallest size
+        "balanced": "/ebook",     # recommended
+        "low": "/prepress"        # best quality
+    }
+
+    selected_quality = quality_options.get(level, "/ebook")
+
     try:
-        file = request.files.get("file")
-        level = request.form.get("level", "balanced")
+        gs_cmd = [
+            "gs", "-sDEVICE=pdfwrite",
+            "-dCompatibilityLevel=1.5",
+            f"-dPDFSETTINGS={selected_quality}",
+            "-dNOPAUSE", "-dQUIET", "-dBATCH",
+            f"-sOutputFile={output_path}",
+            input_path
+        ]
 
-        if not file:
-            return jsonify({"error": "No file uploaded"}), 400
-
-        filename = os.path.splitext(secure_filename(file.filename))[0]
-        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
-        output_path = os.path.join(OUTPUT_FOLDER, f"{filename}_compressed.pdf")
-
-        file.save(input_path)
-
-        compress_pdf(input_path, output_path, level)
-
-        @after_this_request
-        def cleanup(response):
-            for p in (input_path, output_path):
-                if os.path.exists(p):
-                    os.remove(p)
-            return response
-
-        return send_file(output_path, as_attachment=True, download_name=f"{filename}_compressed.pdf")
+        subprocess.run(gs_cmd, check=True)
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print("Ghostscript failed:", e)
+
+        # 🟦 fallback to pikepdf (lossless)
+        try:
+            pdf = pikepdf.open(input_path)
+            pdf.save(output_path, compression=pikepdf.CompressionLevel.compression_level_fast)
+            pdf.close()
+        except Exception as e:
+            print("Fallback failed:", e)
+            return {"error": "Compression failed"}, 500
+
+    return send_file(output_path, as_attachment=True, download_name="compressed.pdf")
+
 # === Run ===
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
