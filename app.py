@@ -8,18 +8,19 @@ from flask_cors import CORS
 # === Import conversion tools ===
 from tools.word_to_pdf import word_to_pdf
 from tools.pdf_to_word import pdf_to_word
-from tools.merge_pdf import merge_pdf  # ✅ New added import
+from tools.merge_pdf import merge_pdf
+from tools.split_pdf import split_selected_pages
 
 # === Flask Setup ===
 app = Flask(__name__)
-CORS(app)  # Enable CORS for frontend (tools.srjahir.in)
+CORS(app)
 
 UPLOAD_FOLDER = "/tmp/uploads"
 OUTPUT_FOLDER = "/tmp/outputs"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-# === Root Route ===
+# === Root ===
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
@@ -28,7 +29,8 @@ def home():
         "routes": [
             "/word-to-pdf",
             "/pdf-to-word",
-            "/merge-pdf"
+            "/merge-pdf",
+            "/split-pdf"
         ]
     })
 
@@ -40,24 +42,21 @@ def convert_word_to_pdf():
         if not file:
             return jsonify({"error": "No file uploaded"}), 400
 
-        original_name = os.path.splitext(secure_filename(file.filename))[0]
-        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
-        file.save(input_path)
+        name = os.path.splitext(secure_filename(file.filename))[0]
+        in_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        out_path = os.path.join(OUTPUT_FOLDER, f"{name}.pdf")
 
-        output_filename = f"{original_name}.pdf"
-        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
-
-        # Convert DOCX → PDF
-        word_to_pdf(input_path, output_path)
+        file.save(in_path)
+        word_to_pdf(in_path, out_path)
 
         @after_this_request
-        def cleanup(response):
-            for p in (input_path, output_path):
+        def cleanup(res):
+            for p in (in_path, out_path):
                 if os.path.exists(p):
                     os.remove(p)
-            return response
+            return res
 
-        return send_file(output_path, as_attachment=True, download_name=output_filename)
+        return send_file(out_path, as_attachment=True, download_name=f"{name}.pdf")
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -70,86 +69,83 @@ def convert_pdf_to_word():
         if not file:
             return jsonify({"error": "No file uploaded"}), 400
 
-        original_name = os.path.splitext(secure_filename(file.filename))[0]
-        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
-        file.save(input_path)
+        name = os.path.splitext(secure_filename(file.filename))[0]
+        in_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        out_path = os.path.join(OUTPUT_FOLDER, f"{name}.docx")
 
-        output_filename = f"{original_name}.docx"
-        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
-
-        pdf_to_word(input_path, output_path)
+        file.save(in_path)
+        pdf_to_word(in_path, out_path)
 
         @after_this_request
-        def cleanup(response):
-            for p in (input_path, output_path):
+        def cleanup(res):
+            for p in (in_path, out_path):
                 if os.path.exists(p):
                     os.remove(p)
-            return response
+            return res
 
-        return send_file(output_path, as_attachment=True, download_name=output_filename)
+        return send_file(out_path, as_attachment=True, download_name=f"{name}.docx")
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# === Merge Multiple PDFs ===
+# === Merge PDFs ===
 @app.route("/merge-pdf", methods=["POST"])
 def merge_pdfs():
     try:
         files = request.files.getlist("files")
-        if not files or len(files) < 2:
-            return jsonify({"error": "Please upload at least two PDF files"}), 400
+        if len(files) < 2:
+            return jsonify({"error": "Upload at least 2 PDFs"}), 400
 
-        temp_dir = tempfile.mkdtemp(dir="/tmp")
-        output_path = os.path.join(temp_dir, "merged_output.pdf")
+        tempdir = tempfile.mkdtemp(dir="/tmp")
+        out_path = os.path.join(tempdir, "merged.pdf")
 
-        # ✅ Call function from tools/merge_pdf.py
-        merge_pdf(files, output_path)
+        merge_pdf(files, out_path)
 
         @after_this_request
-        def cleanup(response):
-            if os.path.exists(output_path):
-                os.remove(output_path)
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir, ignore_errors=True)
-            return response
+        def cleanup(res):
+            if os.path.exists(out_path):
+                os.remove(out_path)
+            shutil.rmtree(tempdir, ignore_errors=True)
+            return res
 
-        return send_file(output_path, as_attachment=True, download_name="Merged_File.pdf")
+        return send_file(out_path, as_attachment=True, download_name="Merged_File.pdf")
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-
-
-
-
-
-
-from tools.split_pdf import split_selected_pages
-
+# === Split PDF Pages ===
 @app.route("/split-pdf", methods=["POST"])
 def split_pdf_api():
     try:
         file = request.files.get("file")
         pages = request.form.get("pages")
+
         if not file or not pages:
             return jsonify({"error": "Missing file or pages"}), 400
 
-        selected_pages = [int(p) for p in pages.split(",") if p.strip().isdigit()]
+        pages_list = [int(p) for p in pages.split(",") if p.strip().isdigit()]
 
-        filename = os.path.splitext(secure_filename(file.filename))[0]
-        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
-        output_path = os.path.join(OUTPUT_FOLDER, f"{filename}_split.pdf")
-        file.save(input_path)
+        name = os.path.splitext(secure_filename(file.filename))[0]
+        in_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        out_path = os.path.join(OUTPUT_FOLDER, f"{name}_split.pdf")
 
-        split_selected_pages(input_path, output_path, selected_pages)
+        file.save(in_path)
 
-        return send_file(output_path, as_attachment=True, download_name=f"{filename}_split.pdf")
+        split_selected_pages(in_path, out_path, pages_list)
+
+        @after_this_request
+        def cleanup(res):
+            for p in (in_path, out_path):
+                if os.path.exists(p):
+                    os.remove(p)
+            return res
+
+        return send_file(out_path, as_attachment=True, download_name=f"{name}_split.pdf")
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# === Run App ===
+# === Run ===
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
