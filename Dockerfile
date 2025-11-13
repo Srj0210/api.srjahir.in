@@ -3,9 +3,14 @@ FROM python:3.11-slim
 WORKDIR /app
 COPY . /app
 
-# ===== Install System Tools (No unoconv) =====
+# ===== Install System Tools (Added ghostscript ONLY) =====
 RUN apt-get update && apt-get install -y \
-    libreoffice-writer poppler-utils fonts-dejavu fonts-liberation \
+    libreoffice-writer \
+    poppler-utils \
+    fonts-dejavu \
+    fonts-liberation \
+    ghostscript \
+    libcairo2 \
     && rm -rf /var/lib/apt/lists/*
 
 # ===== Python Dependencies =====
