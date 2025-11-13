@@ -196,27 +196,28 @@ def remove_pages_api():
 
 
 
-from tools.organize_pdf import organize_pdf
-
 @app.route("/organize-pdf", methods=["POST"])
-def organize_pdf_api():
+def organize_pdf_route():
     try:
         file = request.files.get("file")
         order = request.form.get("order")
 
-        if not file or not order:
-            return jsonify({"error": "Missing file or page order"}), 400
+        if not file:
+            return jsonify({"error": "No file uploaded"}), 400
 
-        order_list = [int(x) for x in order.split(",")]
+        if not order:
+            return jsonify({"error": "Page order missing"}), 400
 
-        filename = os.path.splitext(secure_filename(file.filename))[0]
+        order = list(map(int, order.split(",")))
 
+        original_name = os.path.splitext(secure_filename(file.filename))[0]
         input_path = os.path.join(UPLOAD_FOLDER, file.filename)
-        output_path = os.path.join(OUTPUT_FOLDER, f"{filename}_organized.pdf")
-
         file.save(input_path)
 
-        organize_pdf(input_path, output_path, order_list)
+        output_filename = f"{original_name}_organized.pdf"
+        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+
+        organize_pdf(input_path, output_path, order)
 
         @after_this_request
         def cleanup(response):
@@ -225,15 +226,10 @@ def organize_pdf_api():
                     os.remove(p)
             return response
 
-        return send_file(
-            output_path,
-            as_attachment=True,
-            download_name=f"{filename}_organized.pdf"
-        )
+        return send_file(output_path, as_attachment=True, download_name=output_filename)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 # === Run ===
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
