@@ -12,6 +12,7 @@ from tools.merge_pdf import merge_pdf
 from tools.split_pdf import split_selected_pages
 from tools.remove_pages import remove_pages
 from tools.organize_pdf import organize_pdf
+from tools.compress_pdf import compress_pdf
 
 
 
@@ -227,6 +228,39 @@ def organize_pdf_route():
             return response
 
         return send_file(output_path, as_attachment=True, download_name=output_filename)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+
+
+
+@app.route("/compress-pdf", methods=["POST"])
+def compress_pdf_api():
+    try:
+        file = request.files.get("file")
+        level = request.form.get("level", "balanced")
+
+        if not file:
+            return jsonify({"error": "No file uploaded"}), 400
+
+        filename = os.path.splitext(secure_filename(file.filename))[0]
+        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        output_path = os.path.join(OUTPUT_FOLDER, f"{filename}_compressed.pdf")
+
+        file.save(input_path)
+
+        compress_pdf(input_path, output_path, level)
+
+        @after_this_request
+        def cleanup(response):
+            for p in (input_path, output_path):
+                if os.path.exists(p):
+                    os.remove(p)
+            return response
+
+        return send_file(output_path, as_attachment=True, download_name=f"{filename}_compressed.pdf")
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
