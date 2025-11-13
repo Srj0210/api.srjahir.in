@@ -11,6 +11,18 @@ from tools.pdf_to_word import pdf_to_word
 from tools.merge_pdf import merge_pdf
 from tools.split_pdf import split_selected_pages
 from tools.remove_pages import remove_pages
+from tools.organize_pdf import organize_pdf
+
+
+
+
+
+
+
+
+
+
+
 
 # === Flask Setup ===
 app = Flask(__name__)
@@ -176,6 +188,48 @@ def remove_pages_api():
             return response
 
         return send_file(output_path, as_attachment=True, download_name=f"{filename}_cleaned.pdf")
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+
+
+
+from tools.organize_pdf import organize_pdf
+
+@app.route("/organize-pdf", methods=["POST"])
+def organize_pdf_api():
+    try:
+        file = request.files.get("file")
+        order = request.form.get("order")
+
+        if not file or not order:
+            return jsonify({"error": "Missing file or page order"}), 400
+
+        order_list = [int(x) for x in order.split(",")]
+
+        filename = os.path.splitext(secure_filename(file.filename))[0]
+
+        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        output_path = os.path.join(OUTPUT_FOLDER, f"{filename}_organized.pdf")
+
+        file.save(input_path)
+
+        organize_pdf(input_path, output_path, order_list)
+
+        @after_this_request
+        def cleanup(response):
+            for p in (input_path, output_path):
+                if os.path.exists(p):
+                    os.remove(p)
+            return response
+
+        return send_file(
+            output_path,
+            as_attachment=True,
+            download_name=f"{filename}_organized.pdf"
+        )
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
