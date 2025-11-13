@@ -234,6 +234,8 @@ def organize_pdf_route():
 def compress_pdf():
     import subprocess
     import pikepdf
+    from flask import send_file, request, after_this_request
+    import os
 
     if "file" not in request.files:
         return {"error": "No file uploaded"}, 400
@@ -241,19 +243,24 @@ def compress_pdf():
     file = request.files["file"]
     level = request.form.get("level", "balanced")
 
-    input_path = f"/tmp/input_{file.filename}"
-    output_path = f"/tmp/output_{file.filename}"
+    # Clean filename for safe usage
+    original_name = os.path.splitext(secure_filename(file.filename))[0]
+
+    input_path = f"/tmp/{original_name}_input.pdf"
+    output_path = f"/tmp/{original_name}_compressed.pdf"
 
     file.save(input_path)
 
+    # Ghostscript quality levels
     quality_options = {
-        "high": "/screen",     
-        "balanced": "/ebook",
-        "low": "/prepress"
+        "high": "/screen",        # smallest
+        "balanced": "/ebook",     # recommended
+        "low": "/prepress"        # best quality
     }
 
     selected_quality = quality_options.get(level, "/ebook")
 
+    # Try Ghostscript
     try:
         gs_cmd = [
             "gs", "-sDEVICE=pdfwrite",
@@ -263,24 +270,31 @@ def compress_pdf():
             f"-sOutputFile={output_path}",
             input_path
         ]
-
         subprocess.run(gs_cmd, check=True)
 
-    except Exception:
+    except Exception as e:
+        print("Ghostscript failed:", e)
+
+        # Fallback – pikepdf
         try:
             pdf = pikepdf.open(input_path)
             pdf.save(output_path, compression=pikepdf.CompressionLevel.compression_level_fast)
             pdf.close()
-        except:
+        except Exception as e:
+            print("Fallback failed:", e)
             return {"error": "Compression failed"}, 500
 
+    # Auto delete after download
     @after_this_request
     def cleanup(response):
-        cleanup_files(input_path, output_path)
+        for p in (input_path, output_path):
+            if os.path.exists(p):
+                os.remove(p)
         return response
 
-    return send_file(output_path, as_attachment=True, download_name="compressed.pdf")
+    final_name = f"{original_name}_compressed.pdf"
 
+    return send_file(output_path, as_attachment=True, attachment_filename=final_name)
 
 
 # ========== RUN SERVER ==========
