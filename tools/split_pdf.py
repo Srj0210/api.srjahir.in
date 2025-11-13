@@ -1,13 +1,21 @@
+# tools/split_pdf.py
 from PyPDF2 import PdfReader, PdfWriter
-import os
 
-def split_selected_pages(input_path, output_path, selected_pages):
+def split_selected_pages(input_path: str, output_path: str, pages):
+    """
+    pages: iterable of ints (1-based page numbers)
+    """
     reader = PdfReader(input_path)
     writer = PdfWriter()
+    total = len(reader.pages)
 
-    for page_num in selected_pages:
-        if 1 <= page_num <= len(reader.pages):
-            writer.add_page(reader.pages[page_num - 1])
+    for p in pages:
+        try:
+            pi = int(p)
+        except:
+            continue
+        if 1 <= pi <= total:
+            writer.add_page(reader.pages[pi - 1])
 
     with open(output_path, "wb") as f:
         writer.write(f)
