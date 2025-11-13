@@ -234,7 +234,7 @@ def organize_pdf_route():
 def compress_pdf():
     import subprocess
     import pikepdf
-    from flask import send_file, request, after_this_request
+    from flask import send_file, after_this_request
     import os
 
     if "file" not in request.files:
@@ -243,24 +243,22 @@ def compress_pdf():
     file = request.files["file"]
     level = request.form.get("level", "balanced")
 
-    # Clean filename for safe usage
-    original_name = os.path.splitext(secure_filename(file.filename))[0]
+    base = os.path.splitext(secure_filename(file.filename))[0]
 
-    input_path = f"/tmp/{original_name}_input.pdf"
-    output_path = f"/tmp/{original_name}_compressed.pdf"
+    input_path = f"/tmp/{base}_input.pdf"
+    output_path = f"/tmp/{base}_compressed.pdf"
 
     file.save(input_path)
 
-    # Ghostscript quality levels
+    # Ghostscript compression presets
     quality_options = {
-        "high": "/screen",        # smallest
-        "balanced": "/ebook",     # recommended
-        "low": "/prepress"        # best quality
+        "high": "/screen",       # max compression
+        "balanced": "/ebook",    # recommended
+        "low": "/prepress"       # best quality
     }
 
     selected_quality = quality_options.get(level, "/ebook")
 
-    # Try Ghostscript
     try:
         gs_cmd = [
             "gs", "-sDEVICE=pdfwrite",
@@ -270,12 +268,13 @@ def compress_pdf():
             f"-sOutputFile={output_path}",
             input_path
         ]
+
         subprocess.run(gs_cmd, check=True)
 
     except Exception as e:
         print("Ghostscript failed:", e)
 
-        # Fallback – pikepdf
+        # Fallback → pikepdf (lossless)
         try:
             pdf = pikepdf.open(input_path)
             pdf.save(output_path, compression=pikepdf.CompressionLevel.compression_level_fast)
@@ -284,7 +283,6 @@ def compress_pdf():
             print("Fallback failed:", e)
             return {"error": "Compression failed"}, 500
 
-    # Auto delete after download
     @after_this_request
     def cleanup(response):
         for p in (input_path, output_path):
@@ -292,9 +290,9 @@ def compress_pdf():
                 os.remove(p)
         return response
 
-    final_name = f"{original_name}_compressed.pdf"
+    final_name = f"{base}_Compressed.pdf"
 
-    return send_file(output_path, as_attachment=True, attachment_filename=final_name)
+    return send_file(output_path, as_attachment=True, download_name=final_name)
 
 
 # ========== RUN SERVER ==========
