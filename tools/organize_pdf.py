@@ -1,11 +1,11 @@
 from PyPDF2 import PdfReader, PdfWriter
 
-def organize_pdf(input_path, output_path, order_list):
+def organize_pdf(input_path, output_path, order):
     reader = PdfReader(input_path)
     writer = PdfWriter()
 
-    for page_num in order_list:
-        writer.add_page(reader.pages[page_num - 1])
+    for index in order:
+        writer.add_page(reader.pages[index])
 
     with open(output_path, "wb") as f:
         writer.write(f)
