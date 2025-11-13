@@ -146,6 +146,39 @@ def split_pdf_api():
         return jsonify({"error": str(e)}), 500
 
 
+
+from tools.remove_pages import remove_pages
+
+@app.route("/remove-pages", methods=["POST"])
+def remove_pages_api():
+    try:
+        file = request.files.get("file")
+        pages = request.form.get("pages")
+
+        if not file or not pages:
+            return jsonify({"error": "Missing file or pages"}), 400
+
+        pages_to_delete = [int(p) for p in pages.split(",") if p.strip().isdigit()]
+
+        filename = os.path.splitext(secure_filename(file.filename))[0]
+        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        output_path = os.path.join(OUTPUT_FOLDER, f"{filename}_cleaned.pdf")
+        file.save(input_path)
+
+        remove_pages(input_path, output_path, pages_to_delete)
+
+        @after_this_request
+        def cleanup(response):
+            for p in (input_path, output_path):
+                if os.path.exists(p):
+                    os.remove(p)
+            return response
+
+        return send_file(output_path, as_attachment=True, download_name=f"{filename}_cleaned.pdf")
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # === Run ===
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
