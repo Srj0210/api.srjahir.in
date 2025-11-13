@@ -10,6 +10,7 @@ from tools.word_to_pdf import word_to_pdf
 from tools.pdf_to_word import pdf_to_word
 from tools.merge_pdf import merge_pdf
 from tools.split_pdf import split_selected_pages
+from tools.remove_pages import remove_pages
 
 # === Flask Setup ===
 app = Flask(__name__)
