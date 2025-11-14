@@ -9,7 +9,7 @@ docx2pdf==0.1.8
 PyPDF2==3.0.1
 pikepdf==7.0.0
 
-# For OCR, Repair, Optimize (future)
+# OCR / Repair / Optimize support
 pdfminer.six==20231228
 Pillow==10.1.0
 
