@@ -12,6 +12,7 @@ from tools.merge_pdf import merge_pdf
 from tools.split_pdf import split_selected_pages
 from tools.remove_pages import remove_pages
 from tools.organize_pdf import organize_pdf
+from tools.repair_pdf import repair_pdf
 
 
 # ========== FLASK BASE SETUP ==========
@@ -294,6 +295,35 @@ def compress_pdf():
 
     return send_file(output_path, as_attachment=True, download_name=final_name)
 
+
+
+@app.route("/repair-pdf", methods=["POST"])
+def repair_pdf_route():
+    try:
+        file = request.files.get("file")
+        if not file:
+            return jsonify({"error": "No PDF uploaded"}), 400
+
+        original_name = os.path.splitext(secure_filename(file.filename))[0]
+
+        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        output_path = os.path.join(OUTPUT_FOLDER, f"{original_name}_repaired.pdf")
+
+        file.save(input_path)
+
+        # Run Repair
+        repair_pdf(input_path, output_path)
+
+        @after_this_request
+        def cleanup(response):
+            for p in (input_path, output_path):
+                if os.path.exists(p): os.remove(p)
+            return response
+
+        return send_file(output_path, as_attachment=True, download_name=f"{original_name}_repaired.pdf")
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ========== RUN SERVER ==========
 if __name__ == "__main__":
