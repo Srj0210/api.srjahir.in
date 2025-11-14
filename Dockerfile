@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     libreoffice-calc \
     poppler-utils \
     ghostscript \
+    qpdf \
     fonts-dejavu \
     fonts-liberation \
     tesseract-ocr \
