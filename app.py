@@ -312,7 +312,13 @@ def repair_pdf_route():
         file.save(input_path)
 
         # Run Repair
-        repair_pdf(input_path, output_path)
+        try:
+            repair_pdf(input_path, output_path)
+        except Exception as e:
+            return jsonify({"error": "PDF is too damaged to repair"}), 500
+
+        if not os.path.exists(output_path) or os.path.getsize(output_path) < 100:
+            return jsonify({"error": "PDF cannot be repaired. File is fully corrupted."}), 400
 
         @after_this_request
         def cleanup(response):
