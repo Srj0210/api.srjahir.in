@@ -331,6 +331,42 @@ def repair_pdf_route():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+# ========== OCR PDF ==========
+@app.route("/ocr-pdf", methods=["POST"])
+def ocr_pdf_route():
+    try:
+        file = request.files.get("file")
+        if not file:
+            return jsonify({"error": "No PDF uploaded"}), 400
+
+        original = os.path.splitext(secure_filename(file.filename))[0]
+
+        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        output_path = os.path.join(OUTPUT_FOLDER, f"{original}_OCR.txt")
+
+        file.save(input_path)
+
+        # Run OCR
+        from tools.ocr_pdf import ocr_pdf
+        ocr_pdf(input_path, output_path)
+
+        @after_this_request
+        def cleanup(response):
+            for p in (input_path, output_path):
+                if os.path.exists(p):
+                    os.remove(p)
+            return response
+
+        return send_file(
+            output_path,
+            as_attachment=True,
+            download_name=f"{original}_OCR.txt"
+        )
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ========== RUN SERVER ==========
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
