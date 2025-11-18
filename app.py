@@ -331,25 +331,31 @@ def repair_pdf_route():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-# ========== OCR PDF ==========
-@app.route("/ocr-pdf", methods=["POST"])
-def ocr_pdf_route():
+# ========== OCR (Image + PDF) ==========
+@app.route("/ocr", methods=["POST"])
+def ocr_route():
     try:
         file = request.files.get("file")
+        output_type = request.form.get("type", "text")   # text / pdf
+
         if not file:
-            return jsonify({"error": "No PDF uploaded"}), 400
+            return jsonify({"error": "No file uploaded"}), 400
 
         original = os.path.splitext(secure_filename(file.filename))[0]
 
+        # Input path
         input_path = os.path.join(UPLOAD_FOLDER, file.filename)
-        output_path = os.path.join(OUTPUT_FOLDER, f"{original}_OCR.txt")
-
         file.save(input_path)
 
-        # Run OCR
-        from tools.ocr_pdf import ocr_pdf
-        ocr_pdf(input_path, output_path)
+        # Output name based on type
+        if output_type == "pdf":
+            output_path = os.path.join(OUTPUT_FOLDER, f"{original}_OCR.pdf")
+        else:
+            output_path = os.path.join(OUTPUT_FOLDER, f"{original}_OCR.txt")
+
+        # Import OCR function
+        from tools.ocr_engine import run_ocr
+        run_ocr(input_path, output_path, output_type)
 
         @after_this_request
         def cleanup(response):
@@ -361,7 +367,7 @@ def ocr_pdf_route():
         return send_file(
             output_path,
             as_attachment=True,
-            download_name=f"{original}_OCR.txt"
+            download_name=os.path.basename(output_path)
         )
 
     except Exception as e:
