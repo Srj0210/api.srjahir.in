@@ -13,7 +13,7 @@ from tools.split_pdf import split_selected_pages
 from tools.remove_pages import remove_pages
 from tools.organize_pdf import organize_pdf
 from tools.repair_pdf import repair_pdf
-
+from tools.ocr_pdf import run_ocr
 
 # ========== FLASK BASE SETUP ==========
 app = Flask(__name__)
