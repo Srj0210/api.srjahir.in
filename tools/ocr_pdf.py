@@ -1,50 +1,40 @@
-import os
-import subprocess
-from PIL import Image
 import pytesseract
+from pdf2image import convert_from_path
+from PIL import Image
+from fpdf import FPDF
+import os
 
-def ocr_process(input_path, output_path, output_type="text"):
-    filename, ext = os.path.splitext(input_path)
+def run_ocr(input_path, output_path, output_type):
 
-    # If input is image - open directly
-    if ext.lower() in [".jpg", ".jpeg", ".png"]:
-        image = Image.open(input_path)
+    # Check if file is image or PDF
+    ext = os.path.splitext(input_path)[1].lower()
 
-        if output_type == "text":
-            text = pytesseract.image_to_string(image)
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(text)
-            return
+    text_output = ""
 
-        elif output_type == "pdf":
-            pytesseract.image_to_pdf_or_hocr(image, extension='pdf')
-            pdf_bytes = pytesseract.image_to_pdf_or_hocr(image, extension='pdf')
-            with open(output_path, "wb") as f:
-                f.write(pdf_bytes)
-            return
+    if ext in [".png", ".jpg", ".jpeg", ".webp"]:
+        # ---- IMAGE OCR ----
+        text_output = pytesseract.image_to_string(Image.open(input_path))
 
-    # If input is PDF → run OCR on full PDF
-    if ext.lower() == ".pdf":
-        if output_type == "pdf":
-            # Convert scanned PDF → searchable PDF
-            subprocess.run([
-                "tesseract",
-                input_path,
-                filename,
-                "pdf"
-            ], check=True)
-            os.rename(filename + ".pdf", output_path)
-            return
+    else:
+        # ---- PDF OCR ----
+        pages = convert_from_path(input_path)
 
-        elif output_type == "text":
-            # Extract raw text from scanned PDF
-            text = subprocess.check_output([
-                "tesseract",
-                input_path,
-                "stdout"
-            ], encoding="utf-8", errors="ignore")
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(text)
-            return
+        for page in pages:
+            text_output += pytesseract.image_to_string(page) + "\n\n"
 
-    raise Exception("Unsupported file format")
+    # ---- OUTPUT TEXT ----
+    if output_type == "text":
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(text_output)
+
+    # ---- OUTPUT PDF ----
+    else:
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=10)
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
+
+        for line in text_output.split("\n"):
+            pdf.multi_cell(0, 8, line)
+
+        pdf.output(output_path)
