@@ -1,40 +1,61 @@
-import pytesseract
+# tools/ocr_pdf.py
+import os
+import tempfile
 from pdf2image import convert_from_path
 from PIL import Image
-from fpdf import FPDF
-import os
+import pytesseract
 
-def run_ocr(input_path, output_path, output_type):
+def ocr_pdf(input_path: str, output_path: str, output_type: str = "text", dpi: int = 300):
+    """
+    Run OCR on input_path (PDF) and write either plain text or searchable PDF to output_path.
+    output_type: "text" or "pdf"
+    """
+    # Ensure output dir exists
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
-    # Check if file is image or PDF
-    ext = os.path.splitext(input_path)[1].lower()
+    # Temporary folder for images
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            # Convert PDF pages to images
+            pages = convert_from_path(input_path, dpi=dpi, output_folder=tmpdir, fmt='png')
+            if not pages:
+                raise RuntimeError("No pages extracted from PDF")
 
-    text_output = ""
+            if output_type == "text":
+                full_text = []
+                for i, img in enumerate(pages):
+                    # pytesseract image_to_string
+                    txt = pytesseract.image_to_string(img)
+                    full_text.append(txt)
+                # join and save
+                with open(output_path, "w", encoding="utf-8") as f:
+                    f.write("\n\n--- PAGE BREAK ---\n\n".join(full_text))
 
-    if ext in [".png", ".jpg", ".jpeg", ".webp"]:
-        # ---- IMAGE OCR ----
-        text_output = pytesseract.image_to_string(Image.open(input_path))
+            else:  # output_type == "pdf" -> create searchable PDF
+                # For each page, produce hocr or PDF bytes and combine
+                pdf_bytes_list = []
+                for img in pages:
+                    # image_to_pdf_or_hocr returns bytes for pdf when lang/model used
+                    pdf_bytes = pytesseract.image_to_pdf_or_hocr(img, extension='pdf')
+                    pdf_bytes_list.append(pdf_bytes)
 
-    else:
-        # ---- PDF OCR ----
-        pages = convert_from_path(input_path)
+                # Combine page PDFs into single pdf using PyPDF (Pillow can't merge PDFs)
+                try:
+                    from PyPDF2 import PdfMerger
+                except Exception as e:
+                    raise RuntimeError("PyPDF2 is required to merge PDFs. Add 'PyPDF2' to requirements.") from e
 
-        for page in pages:
-            text_output += pytesseract.image_to_string(page) + "\n\n"
+                merger = PdfMerger()
+                for i, b in enumerate(pdf_bytes_list):
+                    # write each page bytes into temp file then append
+                    page_temp = os.path.join(tmpdir, f"page_{i}.pdf")
+                    with open(page_temp, "wb") as f:
+                        f.write(b)
+                    merger.append(page_temp)
 
-    # ---- OUTPUT TEXT ----
-    if output_type == "text":
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write(text_output)
+                merger.write(output_path)
+                merger.close()
 
-    # ---- OUTPUT PDF ----
-    else:
-        pdf = FPDF()
-        pdf.set_auto_page_break(auto=True, margin=10)
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
-
-        for line in text_output.split("\n"):
-            pdf.multi_cell(0, 8, line)
-
-        pdf.output(output_path)
+        except Exception as e:
+            # bubble up useful error
+            raise RuntimeError(f"OCR processing failed: {e}") from e
