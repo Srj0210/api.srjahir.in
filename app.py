@@ -332,7 +332,7 @@ def repair_pdf_route():
         return jsonify({"error": str(e)}), 500
 
 # ========== OCR (Image + PDF) ==========
-@app.route("/ocr", methods=["POST"])
+@app.route("/ocr-pdf", methods=["POST"])
 def ocr_route():
     try:
         file = request.files.get("file")
