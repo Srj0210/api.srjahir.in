@@ -354,7 +354,7 @@ def ocr_route():
             output_path = os.path.join(OUTPUT_FOLDER, f"{original}_OCR.txt")
 
         # Import OCR function
-        from tools.ocr_engine import run_ocr
+        from tools.ocr_pdf import run_ocr
         run_ocr(input_path, output_path, output_type)
 
         @after_this_request
