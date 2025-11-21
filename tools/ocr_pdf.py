@@ -1,65 +1,56 @@
 import os
 import tempfile
-from pdf2image import convert_from_path
 from PIL import Image
 import pytesseract
+import pypdfium2 as pdfium
 
-# Force tesseract binary path for Render
+
 pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
-os.environ["PATH"] += ":/usr/bin:/usr/local/bin"
 
-def ocr_pdf(input_path: str, output_path: str, output_type: str = "text", dpi: int = 300):
 
+def ocr_pdf(input_path, output_path, output_type="text"):
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
-    # Detect if input is image instead of PDF
-    file_ext = input_path.lower().split(".")[-1]
+    ext = input_path.lower().split(".")[-1]
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        try:
+    # Pages list
+    pages = []
 
-            # If IMAGE → load directly
-            if file_ext in ["jpg", "jpeg", "png", "webp", "bmp"]:
-                pages = [Image.open(input_path)]
-            else:
-                # If PDF → convert pages
-                pages = convert_from_path(input_path, dpi=dpi, output_folder=tmpdir, fmt='png')
+    # If IMAGE
+    if ext in ["jpg", "jpeg", "png", "bmp", "webp"]:
+        pages = [Image.open(input_path)]
 
-            if not pages:
-                raise RuntimeError("No pages extracted from file")
+    # If PDF → use pypdfium2 (very low RAM usage)
+    else:
+        pdf = pdfium.PdfDocument(input_path)
+        for i in range(len(pdf)):
+            page = pdf[i]
+            pil_img = page.render(scale=2).to_pil()   # scale=2 → HD OCR
+            pages.append(pil_img)
 
-            # TEXT OUTPUT
-            if output_type == "text":
-                full_text = []
-                for img in pages:
-                    txt = pytesseract.image_to_string(img)
-                    full_text.append(txt)
+    if output_type == "text":
+        full = []
+        for img in pages:
+            full.append(pytesseract.image_to_string(img))
 
-                with open(output_path, "w", encoding="utf-8") as f:
-                    f.write("\n\n--- PAGE BREAK ---\n\n".join(full_text))
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write("\n\n--- PAGE BREAK ---\n\n".join(full))
 
-            else:
-                # SEARCHABLE PDF OUTPUT
-                pdf_bytes_list = []
-                for img in pages:
-                    pdf_bytes = pytesseract.image_to_pdf_or_hocr(img, extension='pdf')
-                    pdf_bytes_list.append(pdf_bytes)
+    else:
+        from PyPDF2 import PdfMerger
+        merger = PdfMerger()
 
-                from PyPDF2 import PdfMerger
-                merger = PdfMerger()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for idx, img in enumerate(pages):
+                pdf_bytes = pytesseract.image_to_pdf_or_hocr(img, extension='pdf')
+                temp_page = os.path.join(tmpdir, f"p{idx}.pdf")
+                with open(temp_page, "wb") as f:
+                    f.write(pdf_bytes)
+                merger.append(temp_page)
 
-                for i, b in enumerate(pdf_bytes_list):
-                    temp_page = os.path.join(tmpdir, f"page_{i}.pdf")
-                    with open(temp_page, "wb") as f:
-                        f.write(b)
-                    merger.append(temp_page)
-
-                merger.write(output_path)
-                merger.close()
-
-        except Exception as e:
-            raise RuntimeError(f"OCR processing failed: {e}") from e
+            merger.write(output_path)
+            merger.close()
 
 
-def run_ocr(input_path, output_path, output_type="text", dpi=300):
-    return ocr_pdf(input_path, output_path, output_type, dpi)
+def run_ocr(input_path, output_path, output_type="text"):
+    return ocr_pdf(input_path, output_path, output_type)
