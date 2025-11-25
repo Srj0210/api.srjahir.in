@@ -2,22 +2,15 @@ Flask==3.0.3
 gunicorn==22.0.0
 Flask-Cors==4.0.0
 
-# Convert Tools
 pdf2docx==0.5.8
 python-docx==1.1.2
 docx2pdf==0.1.8
 PyPDF2==3.0.1
 pikepdf==7.0.0
 
-# OCR / Repair / Optimize support
 pdfminer.six==20231228
 Pillow==10.1.0
+
+reportlab==4.1.0   # ONLY FOR watermark, not for excel
 pytesseract==0.3.10
-
-# Excel support
-pandas==2.2.2
-openpyxl==3.1.2
-
-# Image/PDF Enhancements (future tools)
-reportlab==4.1.0
 pypdfium2==4.21.0
