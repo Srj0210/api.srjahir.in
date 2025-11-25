@@ -14,7 +14,7 @@ from tools.remove_pages import remove_pages
 from tools.organize_pdf import organize_pdf
 from tools.repair_pdf import repair_pdf
 from tools.ocr_pdf import run_ocr
-
+from tools.excel_to_pdf import excel_to_pdf
 # ========== FLASK BASE SETUP ==========
 app = Flask(__name__)
 CORS(app)
@@ -375,6 +375,8 @@ def ocr_route():
 
 
 # ========== EXCEL → PDF ==========
+#from tools.excel_to_pdf import excel_to_pdf
+
 @app.route("/excel-to-pdf", methods=["POST"])
 def excel_to_pdf_route():
     try:
@@ -382,49 +384,21 @@ def excel_to_pdf_route():
         if not file:
             return jsonify({"error": "No Excel file uploaded"}), 400
 
-        original = os.path.splitext(secure_filename(file.filename))[0]
+        name = os.path.splitext(secure_filename(file.filename))[0]
 
-        # Input path
-        input_path = os.path.join(UPLOAD_FOLDER, secure_filename(file.filename))
-        file.save(input_path)
+        in_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        out_path = os.path.join(OUTPUT_FOLDER, f"{name}.pdf")
 
-        # Output path
-        output_path = os.path.join(OUTPUT_FOLDER, f"{original}_converted.pdf")
+        file.save(in_path)
 
-        # LibreOffice convert
-        import subprocess
-        cmd = [
-            "soffice",
-            "--headless",
-            "--invisible",
-            "--convert-to", "pdf",
-            "--outdir", OUTPUT_FOLDER,
-            input_path
-        ]
-
-        subprocess.run(cmd, check=True)
-
-        # LibreOffice output name is filename.pdf
-        temp_pdf = os.path.join(OUTPUT_FOLDER, f"{original}.pdf")
-
-        # Rename to final name
-        if os.path.exists(temp_pdf):
-            os.rename(temp_pdf, output_path)
-        else:
-            return jsonify({"error": "Conversion failed"}), 500
+        excel_to_pdf(in_path, out_path)
 
         @after_this_request
         def cleanup(response):
-            for p in (input_path, output_path):
-                if os.path.exists(p):
-                    os.remove(p)
+            cleanup_files(in_path, out_path)
             return response
 
-        return send_file(
-            output_path,
-            as_attachment=True,
-            download_name=f"{original}_converted.pdf"
-        )
+        return send_file(out_path, as_attachment=True, download_name=f"{name}.pdf")
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
