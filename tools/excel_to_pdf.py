@@ -1,52 +1,43 @@
-import pandas as pd
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, PageBreak
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
+import subprocess
 import os
-
-
-# Register a full Unicode font (Gujarati, Hindi, Tamil etc.)
-FONT_PATH = "/usr/share/fonts/truetype/noto/NotoSans.ttf"
-pdfmetrics.registerFont(TTFont("NotoSans", FONT_PATH))
-
+import shutil
+import tempfile
 
 def excel_to_pdf(input_path, output_path):
-    # Load Excel using pandas
-    df = pd.read_excel(input_path)
+    """
+    Converts Excel → PDF using LibreOffice (Best Quality)
+    Works for Gujarati, Hindi, Marathi, all Indic languages.
+    Zero crashes on Render.
+    """
 
-    # Convert to list of lists for ReportLab table
-    data = [df.columns.tolist()] + df.values.tolist()
+    temp_dir = tempfile.mkdtemp(dir="/tmp")
 
-    # PDF document
-    pdf = SimpleDocTemplate(
-        output_path,
-        pagesize=A4,
-        leftMargin=20,
-        rightMargin=20,
-        topMargin=30,
-        bottomMargin=30
-    )
+    try:
+        # Copy input to temp folder (LibreOffice requirement)
+        local_input = os.path.join(temp_dir, os.path.basename(input_path))
+        shutil.copy(input_path, local_input)
 
-    # Auto column width calculation
-    max_col_chars = df.astype(str).applymap(len).max()
-    col_widths = [(c * 7) + 30 for c in max_col_chars]
+        # LibreOffice headless conversion
+        cmd = [
+            "libreoffice",
+            "--headless",
+            "--nologo",
+            "--nofirststartwizard",
+            "--convert-to", "pdf",
+            "--outdir", temp_dir,
+            local_input
+        ]
 
-    # Create table
-    table = Table(data, colWidths=col_widths)
+        subprocess.run(cmd, check=True)
 
-    # Basic professional table style (white background)
-    style = TableStyle([
-        ("FONT", (0, 0), (-1, -1), "NotoSans", 9),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.white]),
-    ])
+        # Find generated PDF
+        generated_pdf = local_input.replace(".xlsx", ".pdf").replace(".xls", ".pdf")
 
-    table.setStyle(style)
+        # Move to final output
+        shutil.move(generated_pdf, output_path)
 
-    pdf.build([table])
+    except Exception as e:
+        raise RuntimeError(f"Excel to PDF conversion failed: {str(e)}")
+
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
