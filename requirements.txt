@@ -10,12 +10,14 @@ PyPDF2==3.0.1
 pikepdf==7.0.0
 
 # OCR / Repair / Optimize support
-pillow==10.1.0
-pytesseract==0.3.10
-pypdfium2==4.21.0
-
-# PDF parsing fallback
 pdfminer.six==20231228
+Pillow==10.1.0
+pytesseract==0.3.10
 
-# Future tools
+# Excel support
+pandas==2.2.2
+openpyxl==3.1.2
+
+# Image/PDF Enhancements (future tools)
 reportlab==4.1.0
+pypdfium2==4.21.0
