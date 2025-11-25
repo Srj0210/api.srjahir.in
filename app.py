@@ -373,6 +373,62 @@ def ocr_route():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+# ========== EXCEL → PDF ==========
+@app.route("/excel-to-pdf", methods=["POST"])
+def excel_to_pdf_route():
+    try:
+        file = request.files.get("file")
+        if not file:
+            return jsonify({"error": "No Excel file uploaded"}), 400
+
+        original = os.path.splitext(secure_filename(file.filename))[0]
+
+        # Input path
+        input_path = os.path.join(UPLOAD_FOLDER, secure_filename(file.filename))
+        file.save(input_path)
+
+        # Output path
+        output_path = os.path.join(OUTPUT_FOLDER, f"{original}_converted.pdf")
+
+        # LibreOffice convert
+        import subprocess
+        cmd = [
+            "soffice",
+            "--headless",
+            "--invisible",
+            "--convert-to", "pdf",
+            "--outdir", OUTPUT_FOLDER,
+            input_path
+        ]
+
+        subprocess.run(cmd, check=True)
+
+        # LibreOffice output name is filename.pdf
+        temp_pdf = os.path.join(OUTPUT_FOLDER, f"{original}.pdf")
+
+        # Rename to final name
+        if os.path.exists(temp_pdf):
+            os.rename(temp_pdf, output_path)
+        else:
+            return jsonify({"error": "Conversion failed"}), 500
+
+        @after_this_request
+        def cleanup(response):
+            for p in (input_path, output_path):
+                if os.path.exists(p):
+                    os.remove(p)
+            return response
+
+        return send_file(
+            output_path,
+            as_attachment=True,
+            download_name=f"{original}_converted.pdf"
+        )
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ========== RUN SERVER ==========
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
