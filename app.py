@@ -403,9 +403,11 @@ def excel_to_pdf_route():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ========== html → PDF ==========
+# ========== HTML → PDF ==========
+from tools.html_to_pdf import html_to_pdf
+
 @app.route("/html-to-pdf", methods=["POST"])
-def html_to_pdf_route():
+def convert_html_to_pdf():
     try:
         file = request.files.get("file")
         if not file:
@@ -414,7 +416,7 @@ def html_to_pdf_route():
         name = os.path.splitext(secure_filename(file.filename))[0]
 
         input_path = os.path.join(UPLOAD_FOLDER, file.filename)
-        output_path = os.path.join(OUTPUT_FOLDER, f"{name}_converted.pdf")
+        output_path = os.path.join(OUTPUT_FOLDER, f"{name}.pdf")
 
         file.save(input_path)
 
@@ -422,10 +424,12 @@ def html_to_pdf_route():
 
         @after_this_request
         def cleanup(response):
-            cleanup_files(input_path, output_path)
+            for p in (input_path, output_path):
+                if os.path.exists(p):
+                    os.remove(p)
             return response
 
-        return send_file(output_path, as_attachment=True, download_name=f"{name}_converted.pdf")
+        return send_file(output_path, as_attachment=True, download_name=f"{name}.pdf")
 
     except Exception as e:
         return {"error": str(e)}, 500
