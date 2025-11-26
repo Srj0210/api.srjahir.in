@@ -376,7 +376,6 @@ def ocr_route():
 
 
 # ========== EXCEL → PDF ==========
-#from tools.excel_to_pdf import excel_to_pdf
 
 @app.route("/excel-to-pdf", methods=["POST"])
 def excel_to_pdf_route():
@@ -404,6 +403,7 @@ def excel_to_pdf_route():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ========== html → PDF ==========
 @app.route("/html-to-pdf", methods=["POST"])
 def html_to_pdf_route():
     try:
