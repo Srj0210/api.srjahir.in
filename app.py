@@ -15,7 +15,7 @@ from tools.organize_pdf import organize_pdf
 from tools.repair_pdf import repair_pdf
 from tools.ocr_pdf import run_ocr
 from tools.excel_to_pdf import excel_to_pdf
-from tools.html_to_pdf import html_to_pdf
+
 # ========== FLASK BASE SETUP ==========
 app = Flask(__name__)
 CORS(app)
@@ -403,36 +403,7 @@ def excel_to_pdf_route():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ========== HTML → PDF ==========
-from tools.html_to_pdf import html_to_pdf
 
-@app.route("/html-to-pdf", methods=["POST"])
-def convert_html_to_pdf():
-    try:
-        file = request.files.get("file")
-        if not file:
-            return {"error": "No HTML file uploaded"}, 400
-
-        name = os.path.splitext(secure_filename(file.filename))[0]
-
-        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
-        output_path = os.path.join(OUTPUT_FOLDER, f"{name}.pdf")
-
-        file.save(input_path)
-
-        html_to_pdf(input_path, output_path)
-
-        @after_this_request
-        def cleanup(response):
-            for p in (input_path, output_path):
-                if os.path.exists(p):
-                    os.remove(p)
-            return response
-
-        return send_file(output_path, as_attachment=True, download_name=f"{name}.pdf")
-
-    except Exception as e:
-        return {"error": str(e)}, 500
 # ========== RUN SERVER ==========
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
