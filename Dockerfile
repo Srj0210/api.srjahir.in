@@ -17,7 +17,6 @@ RUN apt-get update && apt-get install -y \
     fonts-dejavu \
     wget \
     fontconfig \
-    wkhtmltopdf \
     && rm -rf /var/lib/apt/lists/*
 
 # ===== Add Safe Gujarati Font =====
