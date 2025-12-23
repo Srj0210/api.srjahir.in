@@ -21,15 +21,13 @@ def pdf_to_excel(input_pdf_path: str, output_excel_path: str):
                     continue
 
                 df = pd.DataFrame(table[1:], columns=table[0])
-                df["__page__"] = page_number  # optional: page reference
+                df["__page__"] = page_number
                 all_tables.append(df)
 
     if not all_tables:
         raise RuntimeError("No tables found in PDF")
 
     final_df = pd.concat(all_tables, ignore_index=True)
-
-    # Save to Excel
     final_df.to_excel(output_excel_path, index=False)
 
     return output_excel_path
