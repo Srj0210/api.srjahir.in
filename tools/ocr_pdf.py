@@ -1,51 +1,60 @@
+import pdfplumber
+import pandas as pd
 import os
 import tempfile
-from PIL import Image
-import pytesseract
-import pypdfium2 as pdfium
 
-pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
+from tools.ocr_pdf import run_ocr
 
-def ocr_pdf(input_path, output_path, output_type="text"):
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    ext = input_path.lower().split(".")[-1]
-    pages = []
+def extract_tables(pdf_path):
+    all_tables = []
 
-    if ext in ["jpg", "jpeg", "png", "bmp", "webp"]:
-        pages = [Image.open(input_path)]
+    with pdfplumber.open(pdf_path) as pdf:
+        for page_number, page in enumerate(pdf.pages, start=1):
 
-    else:
-        pdf = pdfium.PdfDocument(input_path)
-        n = len(pdf)
+            tables = page.extract_tables({
+                "vertical_strategy": "lines",
+                "horizontal_strategy": "lines",
+                "intersection_tolerance": 5,
+            })
 
-        for i in range(n):
-            page = pdf[i]
-            pil = page.render(scale=2).to_pil()
-            pages.append(pil)
+            for table in tables:
+                if not table or len(table) < 2:
+                    continue
 
-    if output_type == "text":
-        extracted = []
-        for img in pages:
-            extracted.append(pytesseract.image_to_string(img))
+                df = pd.DataFrame(table[1:], columns=table[0])
+                df["__page__"] = page_number
+                all_tables.append(df)
 
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write("\n\n--- PAGE BREAK ---\n\n".join(extracted))
+    return all_tables
 
-    else:
-        from PyPDF2 import PdfMerger
-        merger = PdfMerger()
 
+def pdf_to_excel(input_pdf_path: str, output_excel_path: str):
+    """
+    PDF → Excel (Smart Mode)
+
+    1️⃣ Try direct table extraction
+    2️⃣ If no tables → OCR → retry
+    """
+
+    # -------- STEP 1: NORMAL TRY --------
+    tables = extract_tables(input_pdf_path)
+
+    # -------- STEP 2: OCR FALLBACK --------
+    if not tables:
         with tempfile.TemporaryDirectory() as tmp:
-            for idx, img in enumerate(pages):
-                pdf_bytes = pytesseract.image_to_pdf_or_hocr(img, extension="pdf")
-                temp_page = os.path.join(tmp, f"{idx}.pdf")
-                with open(temp_page, "wb") as f:
-                    f.write(pdf_bytes)
-                merger.append(temp_page)
+            ocr_pdf_path = os.path.join(tmp, "ocr.pdf")
 
-            merger.write(output_path)
-            merger.close()
+            # OCR → searchable PDF
+            run_ocr(input_pdf_path, ocr_pdf_path, output_type="pdf")
 
-def run_ocr(input_path, output_path, output_type="text"):
-    return ocr_pdf(input_path, output_path, output_type)
+            # Retry extraction
+            tables = extract_tables(ocr_pdf_path)
+
+    if not tables:
+        raise RuntimeError("No tables found even after OCR")
+
+    final_df = pd.concat(tables, ignore_index=True)
+    final_df.to_excel(output_excel_path, index=False)
+
+    return output_excel_path
