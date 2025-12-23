@@ -15,6 +15,7 @@ from tools.organize_pdf import organize_pdf
 from tools.repair_pdf import repair_pdf
 from tools.ocr_pdf import run_ocr
 from tools.excel_to_pdf import excel_to_pdf
+from tools.pdf_to_excel import pdf_to_excel
 
 # ========== FLASK BASE SETUP ==========
 app = Flask(__name__)
@@ -403,6 +404,37 @@ def excel_to_pdf_route():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ========== PDF → EXCEL ==========
+
+@app.route("/pdf-to-excel", methods=["POST"])
+def convert_pdf_to_excel():
+    try:
+        file = request.files.get("file")
+        if not file:
+            return jsonify({"error": "No PDF uploaded"}), 400
+
+        name = os.path.splitext(secure_filename(file.filename))[0]
+
+        in_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        out_path = os.path.join(OUTPUT_FOLDER, f"{name}.xlsx")
+
+        file.save(in_path)
+
+        pdf_to_excel(in_path, out_path)
+
+        @after_this_request
+        def cleanup(response):
+            cleanup_files(in_path, out_path)
+            return response
+
+        return send_file(
+            out_path,
+            as_attachment=True,
+            download_name=f"{name}.xlsx"
+        )
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ========== RUN SERVER ==========
 if __name__ == "__main__":
