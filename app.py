@@ -404,8 +404,8 @@ def excel_to_pdf_route():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ========== PDF → EXCEL ==========
 
+# ========== PDF → EXCEL ==========
 @app.route("/pdf-to-excel", methods=["POST"])
 def convert_pdf_to_excel():
     try:
@@ -418,8 +418,10 @@ def convert_pdf_to_excel():
         in_path = os.path.join(UPLOAD_FOLDER, file.filename)
         out_path = os.path.join(OUTPUT_FOLDER, f"{name}.xlsx")
 
+        # Save uploaded PDF
         file.save(in_path)
 
+        # Convert PDF → Excel (smart hybrid logic inside tool)
         pdf_to_excel(in_path, out_path)
 
         @after_this_request
@@ -434,7 +436,12 @@ def convert_pdf_to_excel():
         )
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        # IMPORTANT: log error for Render debugging
+        print("PDF TO EXCEL ERROR:", e)
+        return jsonify({
+            "error": "PDF to Excel conversion failed",
+            "details": str(e)
+        }), 500
 
 # ========== RUN SERVER ==========
 if __name__ == "__main__":
