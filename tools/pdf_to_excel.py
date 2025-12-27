@@ -7,18 +7,22 @@ from tools.ocr_pdf import run_ocr
 
 def pdf_to_excel(input_pdf_path: str, output_excel_path: str):
     """
-    Smart PDF → Excel
-    1️⃣ Try pdfplumber tables
-    2️⃣ If fails → OCR fallback
-    Render-safe, no Java
+    Smart PDF → Excel Converter
+
+    Logic:
+    1️⃣ Try structured table extraction using pdfplumber
+    2️⃣ If no tables found → OCR fallback
+    3️⃣ If OCR also empty → still generate Excel with Notice
     """
 
     all_tables = []
 
-    # ===== STEP 1: TRY TABLE EXTRACTION =====
+    # ===============================
+    # STEP 1: TRY NORMAL TABLE EXTRACTION
+    # ===============================
     try:
         with pdfplumber.open(input_pdf_path) as pdf:
-            for page_no, page in enumerate(pdf.pages, start=1):
+            for page_number, page in enumerate(pdf.pages, start=1):
                 tables = page.extract_tables()
 
                 for table in tables:
@@ -26,31 +30,50 @@ def pdf_to_excel(input_pdf_path: str, output_excel_path: str):
                         continue
 
                     df = pd.DataFrame(table[1:], columns=table[0])
-                    df["__page__"] = page_no
+                    df["__page__"] = page_number
                     all_tables.append(df)
 
+        # ✅ If tables found → save & return
         if all_tables:
             final_df = pd.concat(all_tables, ignore_index=True)
             final_df.to_excel(output_excel_path, index=False)
             return output_excel_path
 
     except Exception:
-        pass  # silent fallback to OCR
+        # silently move to OCR fallback
+        pass
 
 
-    # ===== STEP 2: OCR FALLBACK =====
+    # ===============================
+    # STEP 2: OCR FALLBACK (TEXT BASED)
+    # ===============================
     with tempfile.TemporaryDirectory() as tmp:
-        ocr_txt = os.path.join(tmp, "ocr.txt")
+        ocr_text_path = os.path.join(tmp, "ocr.txt")
 
-        run_ocr(input_pdf_path, ocr_txt, output_type="text")
+        # Run OCR → TEXT
+        run_ocr(input_pdf_path, ocr_text_path, output_type="text")
 
-        with open(ocr_txt, "r", encoding="utf-8") as f:
-            lines = [l.strip() for l in f.readlines() if l.strip()]
+        # Read OCR output
+        if os.path.exists(ocr_text_path):
+            with open(ocr_text_path, "r", encoding="utf-8") as f:
+                lines = [line.strip() for line in f.readlines() if line.strip()]
+        else:
+            lines = []
 
+        # ===============================
+        # STEP 3: IF OCR ALSO EMPTY → NOTICE EXCEL
+        # ===============================
         if not lines:
-            raise RuntimeError("OCR failed: No readable text found")
+            df = pd.DataFrame(
+                ["No structured table found. This PDF may be scanned or image-based."],
+                columns=["Notice"]
+            )
+            df.to_excel(output_excel_path, index=False)
+            return output_excel_path
 
+        # ===============================
+        # STEP 4: OCR TEXT → EXCEL
+        # ===============================
         df = pd.DataFrame(lines, columns=["Extracted_Text"])
         df.to_excel(output_excel_path, index=False)
-
         return output_excel_path
