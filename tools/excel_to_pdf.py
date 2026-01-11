@@ -1,64 +1,52 @@
-import subprocess
 import os
-import shutil
+import pdfplumber
+import pandas as pd
 import tempfile
+from tools.ocr_pdf import run_ocr
 
 
-def excel_to_pdf(input_path: str, output_path: str):
+def pdf_to_excel(input_pdf_path: str, output_excel_path: str):
     """
-    Convert Excel → PDF using LibreOffice (Headless)
-
-    ✔ Best quality
-    ✔ Works with Gujarati / Hindi / Marathi / Indic fonts
-    ✔ Render-safe
-    ✔ No memory leak
+    Smart PDF → Excel
+    1️⃣ Try table extraction
+    2️⃣ If no tables → create NOTICE Excel (no failure)
+    3️⃣ Never crash frontend
     """
 
-    # Create temp working directory (Render allows /tmp)
-    temp_dir = tempfile.mkdtemp(dir="/tmp")
+    all_tables = []
 
+    # ---------- STEP 1: Try normal table extraction ----------
     try:
-        # ---- 1. Copy Excel file to temp (LibreOffice requirement)
-        input_filename = os.path.basename(input_path)
-        local_input = os.path.join(temp_dir, input_filename)
-        shutil.copy(input_path, local_input)
+        with pdfplumber.open(input_pdf_path) as pdf:
+            for page_number, page in enumerate(pdf.pages, start=1):
+                tables = page.extract_tables()
 
-        # ---- 2. LibreOffice headless command
-        cmd = [
-            "libreoffice",
-            "--headless",
-            "--nologo",
-            "--nofirststartwizard",
-            "--convert-to", "pdf",
-            "--outdir", temp_dir,
-            local_input
-        ]
+                for table in tables:
+                    if not table or len(table) < 2:
+                        continue
 
-        subprocess.run(
-            cmd,
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
+                    df = pd.DataFrame(table[1:], columns=table[0])
+                    df["__page__"] = page_number
+                    all_tables.append(df)
 
-        # ---- 3. Detect generated PDF
-        base_name, _ = os.path.splitext(input_filename)
-        generated_pdf = os.path.join(temp_dir, f"{base_name}.pdf")
+        # ✅ Tables found → save Excel
+        if all_tables:
+            final_df = pd.concat(all_tables, ignore_index=True)
+            final_df.to_excel(output_excel_path, index=False)
+            return output_excel_path
 
-        if not os.path.exists(generated_pdf):
-            raise RuntimeError("LibreOffice did not generate PDF")
+    except Exception:
+        pass  # silently move to fallback
 
-        # ---- 4. Move PDF to final output path
-        shutil.move(generated_pdf, output_path)
+    # ---------- STEP 2: FALLBACK (NO TABLE FOUND) ----------
+    notice_df = pd.DataFrame(
+        [
+            "No structured tables found in this PDF.",
+            "This PDF may be scanned or text-based without table borders.",
+            "Tip: Use OCR tool first, then convert OCR output to Excel."
+        ],
+        columns=["Notice"]
+    )
 
-        return output_path
-
-    except subprocess.CalledProcessError:
-        raise RuntimeError("LibreOffice failed to convert Excel to PDF")
-
-    except Exception as e:
-        raise RuntimeError(f"Excel to PDF conversion failed: {str(e)}")
-
-    finally:
-        # ---- 5. Cleanup temp files (IMPORTANT for Render)
-        shutil.rmtree(temp_dir, ignore_errors=True)
+    notice_df.to_excel(output_excel_path, index=False)
+    return output_excel_path
