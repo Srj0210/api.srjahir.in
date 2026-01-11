@@ -16,6 +16,7 @@ from tools.repair_pdf import repair_pdf
 from tools.ocr_pdf import run_ocr
 from tools.excel_to_pdf import excel_to_pdf
 from tools.pdf_to_excel import pdf_to_excel
+from tools.pdf_to_image.py import pdf_to_image.py
 
 # ========== FLASK BASE SETUP ==========
 app = Flask(__name__)
@@ -440,6 +441,45 @@ def convert_pdf_to_excel():
         print("PDF TO EXCEL ERROR:", e)
         return jsonify({
             "error": "PDF to Excel conversion failed",
+            "details": str(e)
+        }), 500
+
+
+# ========== PDF → IMAGE ==========
+@app.route("/pdf-to-image", methods=["POST"])
+def convert_pdf_to_image():
+    try:
+        file = request.files.get("file")
+        if not file:
+            return jsonify({"error": "No PDF uploaded"}), 400
+
+        name = os.path.splitext(secure_filename(file.filename))[0]
+
+        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        output_path = os.path.join(OUTPUT_FOLDER, f"{name}_images.zip")
+
+        # Save uploaded PDF
+        file.save(input_path)
+
+        # Convert PDF → JPG (ZIP)
+        from tools.pdf_to_image import pdf_to_image
+        pdf_to_image(input_path, output_path)
+
+        @after_this_request
+        def cleanup(response):
+            cleanup_files(input_path, output_path)
+            return response
+
+        return send_file(
+            output_path,
+            as_attachment=True,
+            download_name=f"{name}_JPG.zip"
+        )
+
+    except Exception as e:
+        print("PDF TO IMAGE ERROR:", e)
+        return jsonify({
+            "error": "PDF to Image conversion failed",
             "details": str(e)
         }), 500
 
