@@ -19,7 +19,7 @@ from tools.pdf_to_excel import pdf_to_excel
 from tools.pdf_to_image import pdf_to_image
 from tools.rotate_pdf import rotate_pdf
 from tools.add_watermark import add_watermark
-
+from tools.protect_pdf import protect_pdf
 
 # ========== FLASK BASE SETUP ==========
 app = Flask(__name__)
@@ -567,6 +567,46 @@ def add_watermark_route():
     except Exception as e:
         print("WATERMARK ERROR:", e)
         return jsonify({"error": "Watermark failed"}), 500
+
+
+
+
+@app.route("/protect-pdf", methods=["POST"])
+def protect_pdf_route():
+    try:
+        file = request.files.get("file")
+        password = request.form.get("password")
+
+        if not file or not password:
+            return jsonify({"error": "Missing file or password"}), 400
+
+        name = os.path.splitext(secure_filename(file.filename))[0]
+
+        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        output_path = os.path.join(OUTPUT_FOLDER, f"{name}_protected.pdf")
+
+        file.save(input_path)
+
+        protect_pdf(input_path, output_path, password)
+
+        @after_this_request
+        def cleanup(response):
+            for p in (input_path, output_path):
+                if os.path.exists(p):
+                    os.remove(p)
+            return response
+
+        return send_file(
+            output_path,
+            as_attachment=True,
+            download_name=f"{name}_protected.pdf"
+        )
+
+    except Exception as e:
+        print("PROTECT PDF ERROR:", e)
+        return jsonify({"error": "PDF protection failed"}), 500
+
+
 
 # ========== RUN SERVER ==========
 if __name__ == "__main__":
