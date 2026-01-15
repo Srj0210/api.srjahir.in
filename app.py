@@ -18,7 +18,7 @@ from tools.excel_to_pdf import excel_to_pdf
 from tools.pdf_to_excel import pdf_to_excel
 from tools.pdf_to_image import pdf_to_image
 from tools.rotate_pdf import rotate_pdf
-from tools.add_watermark import add_watermark
+from tools.add_watermark import add_text_watermark, add_image_watermark
 from tools.protect_pdf import protect_pdf
 from tools.unlock_pdf import unlock_pdf
 
