@@ -17,8 +17,7 @@ from tools.ocr_pdf import run_ocr
 from tools.excel_to_pdf import excel_to_pdf
 from tools.pdf_to_excel import pdf_to_excel
 from tools.pdf_to_image import pdf_to_image
-
-
+from tools.rotate_pdf import rotate_pdf
 
 
 # ========== FLASK BASE SETUP ==========
@@ -483,6 +482,51 @@ def convert_pdf_to_image():
         print("PDF TO IMAGE ERROR:", e)
         return jsonify({
             "error": "PDF to Image conversion failed",
+            "details": str(e)
+        }), 500
+
+
+# ========== ROTATE PDF ==========
+@app.route("/rotate-pdf", methods=["POST"])
+def rotate_pdf_route():
+    try:
+        file = request.files.get("file")
+        rotation = request.form.get("rotation")
+
+        if not file:
+            return jsonify({"error": "No PDF uploaded"}), 400
+
+        if not rotation:
+            return jsonify({"error": "Rotation value missing"}), 400
+
+        rotation = int(rotation)
+
+        if rotation not in [90, 180, 270]:
+            return jsonify({"error": "Invalid rotation angle"}), 400
+
+        name = os.path.splitext(secure_filename(file.filename))[0]
+        in_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        out_path = os.path.join(OUTPUT_FOLDER, f"{name}_rotated.pdf")
+
+        file.save(in_path)
+
+        rotate_pdf(in_path, out_path, rotation)
+
+        @after_this_request
+        def cleanup(response):
+            cleanup_files(in_path, out_path)
+            return response
+
+        return send_file(
+            out_path,
+            as_attachment=True,
+            download_name=f"{name}_rotated.pdf"
+        )
+
+    except Exception as e:
+        print("ROTATE PDF ERROR:", e)
+        return jsonify({
+            "error": "PDF rotation failed",
             "details": str(e)
         }), 500
 
