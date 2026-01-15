@@ -535,21 +535,22 @@ def rotate_pdf_route():
 
 
 
+
+
 @app.route("/add-watermark", methods=["POST"])
 def add_watermark_route():
     try:
         file = request.files.get("file")
         text = request.form.get("text")
         image = request.files.get("image")
+        position = request.form.get("position", "diagonal")
 
         if not file:
             return jsonify({"error": "Missing PDF file"}), 400
-
         if not text and not image:
             return jsonify({"error": "Provide text or image watermark"}), 400
 
         name = os.path.splitext(secure_filename(file.filename))[0]
-
         input_path = os.path.join(UPLOAD_FOLDER, file.filename)
         output_path = os.path.join(OUTPUT_FOLDER, f"{name}_watermarked.pdf")
 
@@ -558,24 +559,19 @@ def add_watermark_route():
         if image:
             image_path = os.path.join(UPLOAD_FOLDER, secure_filename(image.filename))
             image.save(image_path)
-            add_image_watermark(input_path, output_path, image_path)
+            add_image_watermark(input_path, output_path, image_path, position)
         else:
-            add_text_watermark(input_path, output_path, text)
+            add_text_watermark(input_path, output_path, text, position)
 
         @after_this_request
         def cleanup(response):
             for p in (input_path, output_path):
-                if os.path.exists(p):
-                    os.remove(p)
-            if image and os.path.exists(image_path):
-                os.remove(image_path)
+                if os.path.exists(p): os.remove(p)
+            if image and os.path.exists(image_path): os.remove(image_path)
             return response
 
-        return send_file(
-            output_path,
-            as_attachment=True,
-            download_name=f"{name}_watermarked.pdf"
-        )
+        return send_file(output_path, as_attachment=True,
+                         download_name=f"{name}_watermarked.pdf")
 
     except Exception as e:
         print("WATERMARK ERROR:", e)
