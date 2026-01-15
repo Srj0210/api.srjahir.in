@@ -20,6 +20,7 @@ from tools.pdf_to_image import pdf_to_image
 from tools.rotate_pdf import rotate_pdf
 from tools.add_watermark import add_watermark
 from tools.protect_pdf import protect_pdf
+from tools.unlock_pdf import unlock_pdf
 
 # ========== FLASK BASE SETUP ==========
 app = Flask(__name__)
@@ -605,6 +606,49 @@ def protect_pdf_route():
     except Exception as e:
         print("PROTECT PDF ERROR:", e)
         return jsonify({"error": "PDF protection failed"}), 500
+
+
+
+@app.route("/unlock-pdf", methods=["POST"])
+def unlock_pdf_route():
+    try:
+        file = request.files.get("file")
+        password = request.form.get("password")
+
+        if not file or not password:
+            return jsonify({"error": "Missing file or password"}), 400
+
+        # 🔐 Safe filename (without extension)
+        name = os.path.splitext(secure_filename(file.filename))[0]
+
+        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        output_path = os.path.join(OUTPUT_FOLDER, f"{name}_unlocked.pdf")
+
+        # 📥 Save uploaded PDF
+        file.save(input_path)
+
+        # 🔓 Unlock PDF
+        unlock_pdf(input_path, output_path, password)
+
+        # 🧹 Auto cleanup after response
+        @after_this_request
+        def cleanup(response):
+            for p in (input_path, output_path):
+                if os.path.exists(p):
+                    os.remove(p)
+            return response
+
+        # 📤 Send unlocked PDF
+        return send_file(
+            output_path,
+            as_attachment=True,
+            download_name=f"{name}_unlocked.pdf"
+        )
+
+    except Exception as e:
+        print("UNLOCK PDF ERROR:", e)
+        return jsonify({"error": "PDF unlock failed"}), 500
+
 
 
 
