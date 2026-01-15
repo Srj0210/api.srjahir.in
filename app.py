@@ -18,6 +18,7 @@ from tools.excel_to_pdf import excel_to_pdf
 from tools.pdf_to_excel import pdf_to_excel
 from tools.pdf_to_image import pdf_to_image
 from tools.rotate_pdf import rotate_pdf
+from tools.add_watermark import add_watermark
 
 
 # ========== FLASK BASE SETUP ==========
@@ -529,6 +530,43 @@ def rotate_pdf_route():
             "error": "PDF rotation failed",
             "details": str(e)
         }), 500
+
+
+
+@app.route("/add-watermark", methods=["POST"])
+def add_watermark_route():
+    try:
+        file = request.files.get("file")
+        text = request.form.get("text")
+
+        if not file or not text:
+            return jsonify({"error": "Missing file or watermark text"}), 400
+
+        name = os.path.splitext(secure_filename(file.filename))[0]
+
+        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        output_path = os.path.join(OUTPUT_FOLDER, f"{name}_watermarked.pdf")
+
+        file.save(input_path)
+
+        add_watermark(input_path, output_path, text)
+
+        @after_this_request
+        def cleanup(response):
+            for p in (input_path, output_path):
+                if os.path.exists(p):
+                    os.remove(p)
+            return response
+
+        return send_file(
+            output_path,
+            as_attachment=True,
+            download_name=f"{name}_watermarked.pdf"
+        )
+
+    except Exception as e:
+        print("WATERMARK ERROR:", e)
+        return jsonify({"error": "Watermark failed"}), 500
 
 # ========== RUN SERVER ==========
 if __name__ == "__main__":
