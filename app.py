@@ -16,7 +16,10 @@ from tools.repair_pdf import repair_pdf
 from tools.ocr_pdf import run_ocr
 from tools.excel_to_pdf import excel_to_pdf
 from tools.pdf_to_excel import pdf_to_excel
-from tools.pdf_to_image.py import pdf_to_image.py
+from tools.pdf_to_image import pdf_to_image
+
+
+
 
 # ========== FLASK BASE SETUP ==========
 app = Flask(__name__)
