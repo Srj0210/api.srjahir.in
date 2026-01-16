@@ -1,40 +1,46 @@
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.colors import Color
-from PIL import Image
 import tempfile
+from PIL import Image
 
-def sign_pdf(input_pdf, output_pdf, text=None, image_path=None, position="bottom-right"):
+def sign_pdf(
+    input_pdf, output_pdf,
+    text=None, image_path=None,
+    page_mode="all", page=None,
+    position_mode="same",
+    x=0.1, y=0.1, w=0.3, h=0.15
+):
     reader = PdfReader(input_pdf)
     writer = PdfWriter()
 
-    for page in reader.pages:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            c = canvas.Canvas(tmp.name, pagesize=A4)
-            w, h = A4
+    for i, page_obj in enumerate(reader.pages):
+        apply = (
+            page_mode == "all" or
+            (page_mode == "single" and i == page-1)
+        )
 
-            x, y = {
-                "bottom-right": (w - 220, 40),
-                "bottom-left": (40, 40),
-                "center": (w / 2 - 100, h / 2)
-            }.get(position, (w - 220, 40))
+        if apply:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                c = canvas.Canvas(tmp.name, pagesize=A4)
+                pw, ph = A4
 
-            if text:
-                c.setFont("Helvetica-Bold", 16)
-                c.setFillColor(Color(0, 0, 0, alpha=0.85))
-                c.drawString(x, y, text)
+                rx = x * pw
+                ry = y * ph
+                rw = w * pw
+                rh = h * ph
 
-            if image_path:
-                img = Image.open(image_path)
-                iw, ih = img.size
-                c.drawImage(image_path, x, y, iw * 0.25, ih * 0.25, mask="auto")
+                if image_path:
+                    c.drawImage(image_path, rx, ry, rw, rh, mask="auto")
+                elif text:
+                    c.setFont("Helvetica-Bold", 20)
+                    c.drawString(rx, ry, text)
 
-            c.save()
-            watermark = PdfReader(tmp.name)
-            page.merge_page(watermark.pages[0])
+                c.save()
+                overlay = PdfReader(tmp.name)
+                page_obj.merge_page(overlay.pages[0])
 
-        writer.add_page(page)
+        writer.add_page(page_obj)
 
     with open(output_pdf, "wb") as f:
         writer.write(f)
