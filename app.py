@@ -665,43 +665,54 @@ def sign_pdf_route():
         file = request.files.get("file")
         text = request.form.get("text")
         image = request.files.get("image")
-        position = request.form.get("position", "bottom-right")
+
+        page_mode = request.form.get("page_mode")      # all / single
+        position_mode = request.form.get("position_mode")
+
+        x = float(request.form.get("x"))
+        y = float(request.form.get("y"))
+        w = float(request.form.get("w"))
+        h = float(request.form.get("h"))
+
+        page = request.form.get("page")
 
         if not file:
-            return jsonify({"error": "Missing PDF"}), 400
-
-        if not text and not image:
-            return jsonify({"error": "Provide signature"}), 400
+            return jsonify({"error":"No PDF"}), 400
 
         name = os.path.splitext(secure_filename(file.filename))[0]
-        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
-        output_path = os.path.join(OUTPUT_FOLDER, f"{name}_signed.pdf")
+        in_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        out_path = os.path.join(OUTPUT_FOLDER, f"{name}_signed.pdf")
+        file.save(in_path)
 
-        file.save(input_path)
-
-        image_path = None
+        img_path = None
         if image:
-            image_path = os.path.join(UPLOAD_FOLDER, secure_filename(image.filename))
-            image.save(image_path)
+            img_path = os.path.join(UPLOAD_FOLDER, secure_filename(image.filename))
+            image.save(img_path)
 
-        sign_pdf(input_path, output_path, text, image_path, position)
+        from tools.sign_pdf import sign_pdf
+        sign_pdf(
+            in_path, out_path,
+            text=text,
+            image_path=img_path,
+            page_mode=page_mode,
+            page=int(page) if page else None,
+            position_mode=position_mode,
+            x=x, y=y, w=w, h=h
+        )
 
         @after_this_request
-        def cleanup(response):
-            for p in (input_path, output_path, image_path):
+        def cleanup(resp):
+            for p in (in_path, out_path, img_path):
                 if p and os.path.exists(p):
                     os.remove(p)
-            return response
+            return resp
 
-        return send_file(
-            output_path,
-            as_attachment=True,
-            download_name=f"{name}_signed.pdf"
-        )
+        return send_file(out_path, as_attachment=True,
+                         download_name=f"{name}_signed.pdf")
 
     except Exception as e:
         print("SIGN PDF ERROR:", e)
-        return jsonify({"error": "PDF signing failed"}), 500
+        return jsonify({"error":"Sign failed"}), 500
 
 
 
