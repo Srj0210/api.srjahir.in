@@ -21,7 +21,7 @@ from tools.rotate_pdf import rotate_pdf
 from tools.add_watermark import add_text_watermark, add_image_watermark
 from tools.protect_pdf import protect_pdf
 from tools.unlock_pdf import unlock_pdf
-
+from tools.sign_pdf import sign_pdf
 # ========== FLASK BASE SETUP ==========
 app = Flask(__name__)
 CORS(app)
@@ -656,7 +656,52 @@ def unlock_pdf_route():
     except Exception as e:
         print("UNLOCK PDF ERROR:", e)
         return jsonify({"error": "PDF unlock failed"}), 500
+        
 
+
+@app.route("/sign-pdf", methods=["POST"])
+def sign_pdf_route():
+    try:
+        file = request.files.get("file")
+        text = request.form.get("text")
+        image = request.files.get("image")
+        position = request.form.get("position", "bottom-right")
+
+        if not file:
+            return jsonify({"error": "Missing PDF"}), 400
+
+        if not text and not image:
+            return jsonify({"error": "Provide signature"}), 400
+
+        name = os.path.splitext(secure_filename(file.filename))[0]
+        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        output_path = os.path.join(OUTPUT_FOLDER, f"{name}_signed.pdf")
+
+        file.save(input_path)
+
+        image_path = None
+        if image:
+            image_path = os.path.join(UPLOAD_FOLDER, secure_filename(image.filename))
+            image.save(image_path)
+
+        sign_pdf(input_path, output_path, text, image_path, position)
+
+        @after_this_request
+        def cleanup(response):
+            for p in (input_path, output_path, image_path):
+                if p and os.path.exists(p):
+                    os.remove(p)
+            return response
+
+        return send_file(
+            output_path,
+            as_attachment=True,
+            download_name=f"{name}_signed.pdf"
+        )
+
+    except Exception as e:
+        print("SIGN PDF ERROR:", e)
+        return jsonify({"error": "PDF signing failed"}), 500
 
 
 
