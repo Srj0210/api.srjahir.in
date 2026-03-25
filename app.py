@@ -51,15 +51,16 @@ def home():
     return jsonify({
         "message": "SRJ Tools API is Live 🚀",
         "status": "ok",
-        "routes": [
-            "/word-to-pdf",
-            "/pdf-to-word",
-            "/merge-pdf",
-            "/split-pdf",
-            "/remove-pages",
-            "/organize-pdf",
-            "/compress-pdf"
-        ]
+        "version": "2.0",
+        "docs": "https://github.com/Srj0210/api.srjahir.in",
+        "routes": {
+            "organize": ["/merge-pdf", "/split-pdf", "/remove-pages", "/organize-pdf"],
+            "optimize": ["/compress-pdf", "/repair-pdf", "/ocr-pdf"],
+            "convert_to_pdf": ["/word-to-pdf", "/excel-to-pdf"],
+            "convert_from_pdf": ["/pdf-to-word", "/pdf-to-excel", "/pdf-to-image"],
+            "edit": ["/rotate-pdf", "/add-watermark", "/sign-pdf"],
+            "security": ["/protect-pdf", "/unlock-pdf"]
+        }
     })
 
 
