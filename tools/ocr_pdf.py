@@ -33,7 +33,7 @@ def ocr_pdf(input_path, output_path, output_type="text"):
             f.write("\n\n--- PAGE BREAK ---\n\n".join(extracted))
 
     else:
-        from PyPDF2 import PdfMerger
+        from pypdf import PdfMerger
         merger = PdfMerger()
 
         with tempfile.TemporaryDirectory() as tmp:

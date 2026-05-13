@@ -1,5 +1,5 @@
 # tools/split_pdf.py
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 def split_selected_pages(input_path: str, output_path: str, pages):
     """

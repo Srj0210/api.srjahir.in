@@ -1,5 +1,5 @@
 import os
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 
 def rotate_pdf(input_path: str, output_path: str, rotation: int):

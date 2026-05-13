@@ -1,5 +1,5 @@
 import os
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 def unlock_pdf(input_pdf_path: str, output_pdf_path: str, password: str):
     reader = PdfReader(input_pdf_path)

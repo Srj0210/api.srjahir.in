@@ -1,6 +1,6 @@
 import os
 import tempfile
-from PyPDF2 import PdfMerger
+from pypdf import PdfMerger
 
 def merge_pdf(input_files, output_path):
     """

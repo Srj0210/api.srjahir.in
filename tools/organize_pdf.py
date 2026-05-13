@@ -1,4 +1,4 @@
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 def organize_pdf(input_path, output_path, order):
     reader = PdfReader(input_path)

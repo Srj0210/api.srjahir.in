@@ -1,8 +1,8 @@
-import PyPDF2
+from pypdf import PdfReader, PdfWriter
 
 def remove_pages(input_path, output_path, pages_to_delete):
-    reader = PyPDF2.PdfReader(input_path)
-    writer = PyPDF2.PdfWriter()
+    reader = PdfReader(input_path)
+    writer = PdfWriter()
 
     for index, page in enumerate(reader.pages, start=1):
         if index not in pages_to_delete:

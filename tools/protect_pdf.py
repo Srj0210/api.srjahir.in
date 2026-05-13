@@ -1,4 +1,4 @@
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 
 def protect_pdf(input_pdf_path: str, output_pdf_path: str, password: str):
@@ -13,7 +13,7 @@ def protect_pdf(input_pdf_path: str, output_pdf_path: str, password: str):
         writer.add_page(page)
 
     # Encrypt PDF
-    writer.encrypt(user_password=password, owner_password=password, use_128bit=True)
+    writer.encrypt(user_password=password, owner_password=None)
 
     with open(output_pdf_path, "wb") as f:
         writer.write(f)

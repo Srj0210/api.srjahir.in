@@ -5,20 +5,17 @@ Flask-Cors==4.0.0
 # Convert Tools
 pdf2docx==0.5.8
 python-docx==1.1.2
-docx2pdf==0.1.8
-PyPDF2==3.0.1
-pikepdf==7.0.0
+pypdf==4.3.1
+pikepdf==9.2.0
 
 # OCR / PDF Utilities
 pdfminer.six==20231228
-Pillow==10.1.0
+Pillow==10.4.0
 pytesseract==0.3.10
-pypdfium2==4.21.0
+pypdfium2==4.30.0
 
 # Excel to PDF support
 pandas==2.2.2
 openpyxl==3.1.2
-reportlab==4.1.0
-pdfplumber==0.11.0
-
-
+reportlab==4.2.2
+pdfplumber==0.11.4
